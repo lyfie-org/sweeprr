@@ -1,0 +1,103 @@
+services:
+
+  # ─────────────────────────────────────────────────────────
+  #  Sweeprr
+  #  Production-like build (requires `docker compose build`).
+  #  For hot-reload dev, use docker-compose.override.yml.
+  # ─────────────────────────────────────────────────────────
+  sweeprr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - sweeprr_config:/config
+    environment:
+      ConfigDir: /config
+      ASPNETCORE_ENVIRONMENT: Production
+    depends_on:
+      - jellyfin
+      - radarr
+      - sonarr
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ─────────────────────────────────────────────────────────
+  #  Jellyfin — port 8097 (avoids conflict with default 8096)
+  # ─────────────────────────────────────────────────────────
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    ports:
+      - "8097:8096"
+    volumes:
+      - jellyfin_config:/config
+      - jellyfin_cache:/cache
+      - media:/media:ro
+    environment:
+      JELLYFIN_PublishedServerUrl: http://localhost:8097
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─────────────────────────────────────────────────────────
+  #  Radarr — port 7879 (avoids conflict with default 7878)
+  # ─────────────────────────────────────────────────────────
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    ports:
+      - "7879:7878"
+    volumes:
+      - radarr_config:/config
+      - media:/movies
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: UTC
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7878/api/v3/system/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─────────────────────────────────────────────────────────
+  #  Sonarr — port 8990 (avoids conflict with default 8989)
+  # ─────────────────────────────────────────────────────────
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    ports:
+      - "8990:8989"
+    volumes:
+      - sonarr_config:/config
+      - media:/tv
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: UTC
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8989/api/v3/system/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  sweeprr_config:
+  jellyfin_config:
+  jellyfin_cache:
+  radarr_config:
+  sonarr_config:
+  # Shared media volume — seed with dummy files via docker/seed/init-media.sh
+  media:

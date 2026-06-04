@@ -1,0 +1,42 @@
+# Hot-reload development override.
+#
+# Usage:
+#   docker compose up          (uses this override automatically)
+#
+# Replaces the production Sweeprr image with:
+#   - .NET SDK image running `dotnet watch` (API hot-reload)
+#   - Source code mounted read-write so edits reflect immediately
+#
+# The Vite dev server still runs on the HOST via `pnpm run dev:web`
+# for the fastest HMR loop. Connect your browser to http://localhost:5173.
+# The API is available at http://localhost:5000 (via the container port map).
+#
+# External services (Jellyfin/Radarr/Sonarr) run from docker-compose.yml unchanged.
+
+services:
+  sweeprr:
+    image: mcr.microsoft.com/dotnet/sdk:9.0
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - sweeprr_config:/config
+      # Preserve NuGet cache across container recreations
+      - nuget_cache:/root/.nuget
+    ports:
+      - "5000:5000"
+    environment:
+      ConfigDir: /config
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5000
+      DOTNET_WATCH_RESTART_ON_RUDE_EDIT: "1"
+    command: dotnet watch --project Sweeprr.API run
+    # Override the production healthcheck — dotnet watch is slower to start
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+
+volumes:
+  nuget_cache:

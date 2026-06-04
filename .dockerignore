@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node
+node_modules
+.pnpm-store
+
+# .NET build artifacts
+**/bin
+**/obj
+
+# Test projects
+Sweeprr.Tests
+
+# Dev / local data
+config
+*.db
+*.db-shm
+*.db-wal
+
+# IDE / tooling
+.vs
+.idea
+.vscode
+*.user
+
+# Reference repos (not part of the build)
+.claude
+
+# Docker compose override (not needed in image)
+docker-compose.override.yml
