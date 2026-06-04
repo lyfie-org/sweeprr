@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
 using Sweeprr.API.Configuration;
+using Sweeprr.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +16,9 @@ if (builder.Environment.IsDevelopment())
 builder.Services.AddSweeprrDataProtection(builder.Configuration);
 builder.Services.AddSweeprrDatabase(builder.Configuration);
 builder.Services.AddSweeprrAuth();
+
+builder.Services.AddScoped<IConnectionService, ConnectionService>();
+builder.Services.AddScoped<IConnectionTestService, ConnectionTestService>();
 
 // Rate limiter: fixed window, 10 attempts / 60 s per IP — applied to POST /api/auth/login.
 builder.Services.AddRateLimiter(options =>
