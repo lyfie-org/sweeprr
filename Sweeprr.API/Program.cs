@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
 using Sweeprr.API.Configuration;
 
@@ -12,6 +14,20 @@ if (builder.Environment.IsDevelopment())
 
 builder.Services.AddSweeprrDataProtection(builder.Configuration);
 builder.Services.AddSweeprrDatabase(builder.Configuration);
+builder.Services.AddSweeprrAuth();
+
+// Rate limiter: fixed window, 10 attempts / 60 s per IP — applied to POST /api/auth/login.
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("login", limiter =>
+    {
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.PermitLimit = 10;
+        limiter.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiter.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
 
 var app = builder.Build();
 
@@ -22,11 +38,11 @@ if (app.Environment.IsDevelopment())
 
 await app.Services.MigrateAndSeedAsync();
 
+app.UseRateLimiter();
+
 app.UseDefaultFiles();
 
-// Static files with cache strategy:
-//   index.html     → no-cache (entry point references hashed assets)
-//   everything else → 1-year immutable (Vite content-hashes filenames)
+// index.html → no-cache; all other static assets → 1-year immutable (Vite hashes filenames)
 app.UseStaticFiles(new StaticFileOptions
 {
     OnPrepareResponse = ctx =>
@@ -44,12 +60,13 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
+app.UseAuthentication();
 app.UseAuthorization();
 
-// /api/* routes are registered here — they take precedence over the SPA fallback
+// /api/* routes take precedence over the SPA fallback
 app.MapControllers();
 
-// Fallback: any unmatched route returns index.html so client-side routing works
+// Any unmatched route returns index.html for client-side routing
 app.MapFallbackToFile("index.html");
 
 app.Run();
