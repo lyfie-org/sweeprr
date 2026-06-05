@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Sweeprr.API/Sweeprr.API.csproj" />
+  <Project Path="Sweeprr.Tests/Sweeprr.Tests.csproj" />
+</Solution>

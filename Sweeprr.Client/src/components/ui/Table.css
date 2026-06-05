@@ -1,0 +1,65 @@
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.table__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.table__header-cell {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--glass-border);
+  white-space: nowrap;
+}
+
+.table__cell {
+  padding: var(--space-3) var(--space-4);
+  color: var(--text-primary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+
+.table__row:last-child .table__cell {
+  border-bottom: none;
+}
+
+.table__row {
+  transition: background var(--transition-fast);
+}
+
+.table__row:hover .table__cell {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.table__empty {
+  padding: var(--space-12) var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .table-container {
+    background: var(--bg-elevated);
+  }
+}

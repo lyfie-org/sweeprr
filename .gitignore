@@ -1,52 +1,36 @@
-# Prerequisites
-*.d
-
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
-
-# Debug files
-*.dSYM/
-*.su
-*.idb
+# .NET build artifacts
+bin/
+obj/
+*.user
+*.suo
+.vs/
 *.pdb
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+# SPA assets embedded into wwwroot at build/publish time (not committed)
+Sweeprr.API/wwwroot/
+
+# pnpm / Node
+node_modules/
+.pnpm-store/
+dist/
+.vite/
+
+# Database & config (persisted via Docker volume in prod)
+*.db
+*.db-shm
+*.db-wal
+/config/
+
+# Environment secrets
+.env
+.env.local
+.env.*.local
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+/.claude

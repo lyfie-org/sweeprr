@@ -1,0 +1,21 @@
+.spinner {
+  display: inline-block;
+  border-radius: 50%;
+  border-style: solid;
+  border-top-color: currentColor;
+  animation: spinner-spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+
+.spinner--sm { width: 14px; height: 14px; border-width: 2px; }
+.spinner--md { width: 20px; height: 20px; border-width: 2px; }
+.spinner--lg { width: 28px; height: 28px; border-width: 3px; }
+.spinner--xl { width: 40px; height: 40px; border-width: 3px; }
+
+.spinner--accent { border-color: rgba(108, 99, 255, 0.2); border-top-color: var(--accent); }
+.spinner--white  { border-color: rgba(255, 255, 255, 0.2); border-top-color: #fff; }
+.spinner--muted  { border-color: rgba(90, 96, 122, 0.2);  border-top-color: var(--text-muted); }
+
+@keyframes spinner-spin {
+  to { transform: rotate(360deg); }
+}
