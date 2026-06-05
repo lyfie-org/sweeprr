@@ -1,0 +1,110 @@
+.input-root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.input__label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+}
+
+.input__label--required::after {
+  content: ' *';
+  color: var(--danger);
+}
+
+.input__wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input__field {
+  width: 100%;
+  height: 38px;
+  padding: 0 var(--space-3);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    background var(--transition-base);
+  outline: none;
+}
+
+.input__field::placeholder {
+  color: var(--text-muted);
+}
+
+.input__field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.15);
+  background: rgba(108, 99, 255, 0.04);
+}
+
+.input__field:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input--error .input__field {
+  border-color: var(--danger);
+}
+
+.input--error .input__field:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.input__icon-left {
+  position: absolute;
+  left: var(--space-3);
+  color: var(--text-muted);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.input__icon-right {
+  position: absolute;
+  right: var(--space-3);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  transition: color var(--transition-fast);
+}
+
+.input__icon-right:hover {
+  color: var(--text-primary);
+}
+
+.input__field--has-left  { padding-left:  calc(var(--space-3) + 20px + var(--space-2)); }
+.input__field--has-right { padding-right: calc(var(--space-3) + 20px + var(--space-2)); }
+
+.input__helper {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--line-height-snug);
+}
+
+.input__error-msg {
+  font-size: var(--text-sm);
+  color: var(--danger);
+  line-height: var(--line-height-snug);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .input__field {
+    background: var(--bg-elevated);
+  }
+}

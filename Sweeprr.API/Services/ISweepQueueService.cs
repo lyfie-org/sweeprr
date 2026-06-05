@@ -12,6 +12,12 @@ public interface ISweepQueueService
     Task<SweepItemResponse?> IgnoreAsync(int id, bool createExclusion, CancellationToken ct = default);
 
     /// <summary>
+    /// Skips an item for the current run by setting its <c>SkippedReason</c> and
+    /// resetting status to <c>Pending</c> so it re-appears next scan.
+    /// </summary>
+    Task<SweepItemResponse?> SkipAsync(int id, string? reason, CancellationToken ct = default);
+
+    /// <summary>
     /// Reconciles scan results into the sweep queue: upserts Pending items,
     /// removes stale Pending items that no longer match.
     /// Returns the number of newly created or updated Pending items.

@@ -1,7 +1,14 @@
 import { Broom } from '@phosphor-icons/react'
+import { KitchenSink } from './pages/KitchenSink'
 import './styles/app.css'
 
+const showKitchenSink =
+  import.meta.env.DEV &&
+  new URLSearchParams(window.location.search).has('ks')
+
 export default function App() {
+  if (showKitchenSink) return <KitchenSink />
+
   return (
     <div className="boot-screen">
       <div className="boot-card">

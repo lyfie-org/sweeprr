@@ -9,6 +9,7 @@ public class RuleGroup
     public bool IsEnabled { get; set; } = true;
     public string? CronOverride { get; set; }
     public SweepAction Action { get; set; } = SweepAction.DeleteAndUnmonitor;
+    public bool AddImportExclusion { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

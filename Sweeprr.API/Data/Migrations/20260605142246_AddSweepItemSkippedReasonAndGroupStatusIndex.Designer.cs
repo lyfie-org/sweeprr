@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Sweeprr.API.Data;
 
@@ -10,9 +11,11 @@ using Sweeprr.API.Data;
 namespace Sweeprr.API.Data.Migrations
 {
     [DbContext(typeof(SweeprrDbContext))]
-    partial class SweeprrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260605142246_AddSweepItemSkippedReasonAndGroupStatusIndex")]
+    partial class AddSweepItemSkippedReasonAndGroupStatusIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.16");
@@ -95,20 +98,11 @@ namespace Sweeprr.API.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<double?>("LibraryPercentCap")
-                        .HasColumnType("REAL");
-
                     b.Property<double>("MaxGbPerRun")
                         .HasColumnType("REAL");
 
                     b.Property<int>("MaxItemsPerRun")
                         .HasColumnType("INTEGER");
-
-                    b.Property<double?>("OverBroadMatchPct")
-                        .HasColumnType("REAL");
-
-                    b.Property<double>("PessimisticSizeGb")
-                        .HasColumnType("REAL");
 
                     b.HasKey("Id");
 
@@ -160,9 +154,6 @@ namespace Sweeprr.API.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Action")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("AddImportExclusion")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CreatedAt")
@@ -256,9 +247,6 @@ namespace Sweeprr.API.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("RuleGroupId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("SeasonNumber")
                         .HasColumnType("INTEGER");
 
                     b.Property<long?>("SizeBytes")

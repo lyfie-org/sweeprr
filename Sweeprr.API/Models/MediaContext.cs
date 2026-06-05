@@ -38,6 +38,15 @@ public sealed class MediaContext
     public string? QualityProfile { get; init; }
     public decimal? FileSizeGb { get; init; }
 
+    // Provider IDs (from Jellyfin — stored on SweepItem for execution-time *arr matching)
+    public string? ImdbId { get; init; }
+    public int? TmdbId { get; init; }
+    public int? TvdbId { get; init; }
+
+    // Arr resolution metadata (set during population when the item is matched to an *arr instance)
+    public int? ArrConnectionId { get; init; }   // ServerConnection.Id
+    public int? SeasonNumber { get; init; }       // Non-null for Season-type items only
+
     /// <summary>
     /// True when any data source returned a transient (non-definitive) error during
     /// population. The item is excluded from deletion regardless of rule conditions.

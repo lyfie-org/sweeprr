@@ -164,7 +164,11 @@ public sealed class SweepQueueService : ISweepQueueService
                     ? (long)(eval.Item.FileSizeGb.Value * 1_073_741_824m)
                     : null;
                 existing.FlaggedAt = DateTime.UtcNow;
-                existing.TmdbId = eval.Item.ItemId; // provider IDs set below
+                existing.TmdbId = eval.Item.TmdbId?.ToString();
+                existing.TvdbId = eval.Item.TvdbId?.ToString();
+                existing.ImdbId = eval.Item.ImdbId;
+                existing.ArrInstanceId = eval.Item.ArrConnectionId;
+                existing.SeasonNumber = eval.Item.SeasonNumber;
                 upsertCount++;
             }
             else
@@ -182,6 +186,11 @@ public sealed class SweepQueueService : ISweepQueueService
                     MatchedRuleSummary = eval.MatchedRuleSummary,
                     Status = SweepItemStatus.Pending,
                     FlaggedAt = DateTime.UtcNow,
+                    TmdbId = eval.Item.TmdbId?.ToString(),
+                    TvdbId = eval.Item.TvdbId?.ToString(),
+                    ImdbId = eval.Item.ImdbId,
+                    ArrInstanceId = eval.Item.ArrConnectionId,
+                    SeasonNumber = eval.Item.SeasonNumber,
                 });
                 upsertCount++;
             }
@@ -197,6 +206,23 @@ public sealed class SweepQueueService : ISweepQueueService
 
         await _db.SaveChangesAsync(ct);
         return upsertCount;
+    }
+
+    public async Task<SweepItemResponse?> SkipAsync(
+        int id, string? reason, CancellationToken ct = default)
+    {
+        var item = await _db.SweepItems
+            .Include(s => s.RuleGroup)
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+
+        if (item is null) return null;
+
+        item.SkippedReason = string.IsNullOrWhiteSpace(reason) ? "Manually skipped" : reason;
+        // Reset to Pending so the item re-appears for the next run
+        item.Status = SweepItemStatus.Pending;
+
+        await _db.SaveChangesAsync(ct);
+        return ToResponse(item);
     }
 
     private static SweepItemResponse ToResponse(SweepItem s) => new(

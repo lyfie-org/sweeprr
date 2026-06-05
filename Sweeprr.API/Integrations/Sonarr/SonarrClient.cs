@@ -167,6 +167,47 @@ public sealed class SonarrClient : ClientBase
     }
 
     /// <summary>
+    /// Sets <c>monitored = false</c> on the series root AND on every season.
+    ///
+    /// Uses a GET-then-PUT round-trip via <see cref="JsonNode"/> so all Sonarr fields
+    /// are preserved. This is the correct pre-delete unmonitor for a whole series —
+    /// it prevents both new-season and per-episode re-downloads.
+    /// </summary>
+    public async Task<HttpResult<SonarrSeries>> UnmonitorSeriesAsync(
+        int seriesId, CancellationToken ct = default)
+    {
+        var getResult = await GetAsync<JsonNode?>($"/api/v3/series/{seriesId}", ct);
+
+        switch (getResult)
+        {
+            case HttpResult<JsonNode?>.TransientFailure t:
+                return HttpResult<SonarrSeries>.Transient(t.Reason, t.Exception);
+
+            case HttpResult<JsonNode?>.DefinitiveFailure d:
+                return HttpResult<SonarrSeries>.Definitive(d.StatusCode, d.Reason);
+
+            case HttpResult<JsonNode?>.Success { Value: JsonObject seriesNode }:
+                seriesNode["monitored"] = false;
+                var seasons = seriesNode["seasons"]?.AsArray();
+                if (seasons is not null)
+                {
+                    foreach (var node in seasons)
+                    {
+                        if (node is JsonObject season)
+                            season["monitored"] = false;
+                    }
+                }
+                var putResult = await PutAsync<SonarrSeriesDto>(
+                    $"/api/v3/series/{seriesId}", seriesNode, ct);
+                return putResult.Map(ToSeries);
+
+            default:
+                return HttpResult<SonarrSeries>.Transient(
+                    $"Unexpected response shape from Sonarr GET /api/v3/series/{seriesId}");
+        }
+    }
+
+    /// <summary>
     /// Bulk-sets <c>monitored = false</c> on a list of episodes.
     /// Uses Sonarr's dedicated <c>PUT /api/v3/episode/monitor</c> endpoint,
     /// which accepts a minimal body — no GET required.

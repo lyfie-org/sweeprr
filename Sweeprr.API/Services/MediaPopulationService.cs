@@ -74,8 +74,8 @@ public sealed class MediaPopulationService : IMediaPopulationService
         };
 
         // Fetch *arr data in parallel with Jellyfin items
-        var radarrIndex = await BuildRadarrIndexAsync(db, clientFactory, matcher, ct);
-        var sonarrIndex = await BuildSonarrIndexAsync(db, clientFactory, matcher, ct);
+        var (radarrIndex, radarrConnId) = await BuildRadarrIndexAsync(db, clientFactory, matcher, ct);
+        var (sonarrIndex, sonarrConnId) = await BuildSonarrIndexAsync(db, clientFactory, matcher, ct);
         var radarrTags = await LoadRadarrTagsAsync(db, clientFactory, ct);
         var sonarrTags = await LoadSonarrTagsAsync(db, clientFactory, ct);
         var radarrProfiles = await LoadRadarrProfilesAsync(db, clientFactory, ct);
@@ -109,7 +109,7 @@ public sealed class MediaPopulationService : IMediaPopulationService
         {
             var ctx = BuildMediaContext(
                 jItem, group.MediaType, users,
-                matcher, radarrIndex, sonarrIndex,
+                matcher, radarrIndex, radarrConnId, sonarrIndex, sonarrConnId,
                 radarrTags, sonarrTags, radarrProfiles, sonarrProfiles,
                 watchAgg);
             contexts.Add(ctx);
@@ -124,16 +124,17 @@ public sealed class MediaPopulationService : IMediaPopulationService
         IReadOnlyList<JellyfinUser> users,
         IMediaMatchingService matcher,
         ArrIndex<RadarrMovie>? radarrIndex,
+        int? radarrConnId,
         ArrIndex<SonarrSeries>? sonarrIndex,
+        int? sonarrConnId,
         IReadOnlyDictionary<int, string> radarrTags,
         IReadOnlyDictionary<int, string> sonarrTags,
         IReadOnlyDictionary<int, string> radarrProfiles,
         IReadOnlyDictionary<int, string> sonarrProfiles,
         IWatchAggregationService watchAgg)
     {
-        var identity = MediaIdentity.From(
-            jItem.ProviderIds,
-            jItem.Type == JellyfinMediaType.Season ? jItem.IndexNumber : null);
+        int? seasonNumber = jItem.Type == JellyfinMediaType.Season ? jItem.IndexNumber : null;
+        var identity = MediaIdentity.From(jItem.ProviderIds, seasonNumber);
 
         // Watch aggregation from playstate cache
         var watchState = AggregateWatchState(jItem.Id, users, watchAgg);
@@ -143,9 +144,7 @@ public sealed class MediaPopulationService : IMediaPopulationService
         IReadOnlyList<string>? tags = null;
         string? qualityProfile = null;
         decimal? fileSizeGb = null;
-        int? arrInstanceId = null;
-        bool transient = false;
-        string? transientReason = null;
+        int? arrConnectionId = null;
 
         if (groupMediaType == MediaType.Movie && radarrIndex is not null)
         {
@@ -153,7 +152,7 @@ public sealed class MediaPopulationService : IMediaPopulationService
             if (match is MatchResult<RadarrMovie>.Matched m)
             {
                 var movie = m.Value;
-                arrInstanceId = movie.Id;
+                arrConnectionId = radarrConnId; // ServerConnection.Id (not the arr-item ID)
                 monitored = movie.Monitored;
                 tags = movie.Tags.Select(t => radarrTags.GetValueOrDefault(t, t.ToString())).ToList();
                 qualityProfile = radarrProfiles.GetValueOrDefault(movie.QualityProfileId);
@@ -168,7 +167,7 @@ public sealed class MediaPopulationService : IMediaPopulationService
             if (match is MatchResult<SonarrSeriesMatch>.Matched m)
             {
                 var series = m.Value.Series;
-                arrInstanceId = series.Id;
+                arrConnectionId = sonarrConnId; // ServerConnection.Id
                 monitored = series.Monitored;
                 tags = series.Tags.Select(t => sonarrTags.GetValueOrDefault(t, t.ToString())).ToList();
                 qualityProfile = sonarrProfiles.GetValueOrDefault(series.QualityProfileId);
@@ -187,7 +186,7 @@ public sealed class MediaPopulationService : IMediaPopulationService
             ItemId = jItem.Id,
             Title = jItem.Name,
             MediaType = groupMediaType,
-            LastWatched = watchState?.LatestLastWatched?.UtcDateTime,
+            LastWatched = watchState?.LatestLastWatched,
             PlayCount = watchState?.MaxPlayCount,
             WatchedByAnyUser = watchState?.WatchedByAnyUser,
             WatchedByAllUsers = watchState?.WatchedByAllUsers,
@@ -203,8 +202,12 @@ public sealed class MediaPopulationService : IMediaPopulationService
             Tags = tags,
             QualityProfile = qualityProfile,
             FileSizeGb = fileSizeGb,
-            HasTransientFailure = transient,
-            TransientFailureReason = transientReason,
+            // Provider IDs forwarded for execution-time *arr matching (stored on SweepItem)
+            ImdbId = jItem.ProviderIds.ImdbId,
+            TmdbId = jItem.ProviderIds.TmdbId,
+            TvdbId = jItem.ProviderIds.TvdbId,
+            ArrConnectionId = arrConnectionId,
+            SeasonNumber = seasonNumber,
         };
     }
 
@@ -238,7 +241,7 @@ public sealed class MediaPopulationService : IMediaPopulationService
 
     // ── *arr index/tag/profile loaders ──────────────────────────────────────
 
-    private async Task<ArrIndex<RadarrMovie>?> BuildRadarrIndexAsync(
+    private async Task<(ArrIndex<RadarrMovie>? Index, int? ConnectionId)> BuildRadarrIndexAsync(
         SweeprrDbContext db, IIntegrationClientFactory factory,
         IMediaMatchingService matcher, CancellationToken ct)
     {
@@ -246,18 +249,18 @@ public sealed class MediaPopulationService : IMediaPopulationService
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Type == ConnectionType.Radarr && c.IsEnabled, ct);
 
-        if (conn is null) return null;
+        if (conn is null) return (null, null);
 
         var client = await factory.CreateRadarrClientAsync(conn.Id, ct);
-        if (client is null) return null;
+        if (client is null) return (null, conn.Id);
 
         var result = await client.GetMoviesAsync(ct);
-        if (result is not HttpResult<IReadOnlyList<RadarrMovie>>.Success ok) return null;
+        if (result is not HttpResult<IReadOnlyList<RadarrMovie>>.Success ok) return (null, conn.Id);
 
-        return matcher.BuildRadarrIndex(ok.Value);
+        return (matcher.BuildRadarrIndex(ok.Value), conn.Id);
     }
 
-    private async Task<ArrIndex<SonarrSeries>?> BuildSonarrIndexAsync(
+    private async Task<(ArrIndex<SonarrSeries>? Index, int? ConnectionId)> BuildSonarrIndexAsync(
         SweeprrDbContext db, IIntegrationClientFactory factory,
         IMediaMatchingService matcher, CancellationToken ct)
     {
@@ -265,15 +268,15 @@ public sealed class MediaPopulationService : IMediaPopulationService
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Type == ConnectionType.Sonarr && c.IsEnabled, ct);
 
-        if (conn is null) return null;
+        if (conn is null) return (null, null);
 
         var client = await factory.CreateSonarrClientAsync(conn.Id, ct);
-        if (client is null) return null;
+        if (client is null) return (null, conn.Id);
 
         var result = await client.GetSeriesAsync(ct);
-        if (result is not HttpResult<IReadOnlyList<SonarrSeries>>.Success ok) return null;
+        if (result is not HttpResult<IReadOnlyList<SonarrSeries>>.Success ok) return (null, conn.Id);
 
-        return matcher.BuildSonarrIndex(ok.Value);
+        return (matcher.BuildSonarrIndex(ok.Value), conn.Id);
     }
 
     private async Task<IReadOnlyDictionary<int, string>> LoadRadarrTagsAsync(

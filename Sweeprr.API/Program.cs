@@ -21,6 +21,11 @@ builder.Services.AddSweeprrDataProtection(builder.Configuration);
 builder.Services.AddSweeprrDatabase(builder.Configuration);
 builder.Services.AddSweeprrAuth();
 
+builder.Services.AddScoped<ISweepQueueService, SweepQueueService>();
+builder.Services.AddScoped<IMediaPopulationService, MediaPopulationService>();
+builder.Services.AddScoped<IFailsafeService, FailsafeService>();
+builder.Services.AddScoped<ISweepExecutor, SweepExecutor>();
+
 builder.Services.AddScoped<IConnectionService, ConnectionService>();
 builder.Services.AddScoped<IConnectionTestService, ConnectionTestService>();
 builder.Services.AddScoped<IMediaMatchingService, MediaMatchingService>();
