@@ -126,8 +126,8 @@ public class DatabaseTests : IDisposable
                 new Rule
                 {
                     Section = 0,
-                    Field = "LastWatched",
-                    Comparator = "InLastDays",
+                    Field = RuleField.LastWatched,
+                    Comparator = RuleComparator.InLastDays,
                     Value = "90",
                     ValueType = RuleValueType.RelativeDays
                 }
@@ -143,7 +143,7 @@ public class DatabaseTests : IDisposable
 
         Assert.Equal("Old Movies", loaded.Name);
         Assert.Single(loaded.Rules);
-        Assert.Equal("LastWatched", loaded.Rules.First().Field);
+        Assert.Equal(RuleField.LastWatched, loaded.Rules.First().Field);
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public class DatabaseTests : IDisposable
             Name = "Test Group",
             MediaType = MediaType.Movie,
             Action = SweepAction.UnmonitorOnly,
-            Rules = [new Rule { Section = 0, Field = "Rating", Comparator = "LessThan", Value = "5", ValueType = RuleValueType.Number }]
+            Rules = [new Rule { Section = 0, Field = RuleField.Rating, Comparator = RuleComparator.LessThan, Value = "5", ValueType = RuleValueType.Number }]
         };
 
         _db.RuleGroups.Add(group);

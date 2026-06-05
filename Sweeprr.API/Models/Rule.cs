@@ -6,8 +6,8 @@ public class Rule
     public int RuleGroupId { get; set; }
     public int Section { get; set; }
     public LogicalOperator? LogicalOperator { get; set; }
-    public string Field { get; set; } = string.Empty;
-    public string Comparator { get; set; } = string.Empty;
+    public RuleField Field { get; set; }
+    public RuleComparator Comparator { get; set; }
     public string Value { get; set; } = string.Empty;
     public RuleValueType ValueType { get; set; }
 

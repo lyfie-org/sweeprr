@@ -1,10 +1,12 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
+using Sweeprr.API.Background;
 using Sweeprr.API.Configuration;
 using Sweeprr.API.Integrations.Jellyfin.WebSocket;
 using Sweeprr.API.Integrations.Matching;
 using Sweeprr.API.Services;
+using Sweeprr.API.Services.Rules;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +24,15 @@ builder.Services.AddSweeprrAuth();
 builder.Services.AddScoped<IConnectionService, ConnectionService>();
 builder.Services.AddScoped<IConnectionTestService, ConnectionTestService>();
 builder.Services.AddScoped<IMediaMatchingService, MediaMatchingService>();
+builder.Services.AddScoped<IRuleValidationService, RuleValidationService>();
+builder.Services.AddScoped<IValueResolver, ValueResolver>();
+builder.Services.AddScoped<IRuleEvaluator, RuleEvaluator>();
+builder.Services.AddScoped<IWatchAggregationService, WatchAggregationService>();
+
+// Background scheduler — singleton so the controller can trigger manual scans on the same instance.
+builder.Services.AddSingleton<IScanPipeline, ScanPipeline>();
+builder.Services.AddSingleton<SchedulerHostedService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<SchedulerHostedService>());
 
 // Typed HTTP clients (Jellyfin, Radarr, Sonarr) with Polly resilience pipelines.
 // Registers IIntegrationClientFactory + named HttpClient pools.

@@ -16,6 +16,7 @@ public class SweepItem
     public string? ImdbId { get; set; }
     public DateTime FlaggedAt { get; set; } = DateTime.UtcNow;
     public DateTime? SweptAt { get; set; }
+    public string? SkippedReason { get; set; }
 
     public RuleGroup RuleGroup { get; set; } = null!;
 }

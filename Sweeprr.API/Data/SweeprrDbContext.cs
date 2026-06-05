@@ -47,6 +47,10 @@ public class SweeprrDbContext(DbContextOptions<SweeprrDbContext> options) : DbCo
             .HasIndex(s => new { s.RuleGroupId, s.MediaServerItemId })
             .HasDatabaseName("IX_SweepItems_GroupItem");
 
+        modelBuilder.Entity<SweepItem>()
+            .HasIndex(s => new { s.RuleGroupId, s.Status })
+            .HasDatabaseName("IX_SweepItems_GroupStatus");
+
         modelBuilder.Entity<ActivityLog>()
             .HasIndex(a => a.Timestamp)
             .HasDatabaseName("IX_ActivityLogs_Timestamp");
