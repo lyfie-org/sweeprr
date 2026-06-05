@@ -2,6 +2,8 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
 using Sweeprr.API.Configuration;
+using Sweeprr.API.Integrations.Jellyfin.WebSocket;
+using Sweeprr.API.Integrations.Matching;
 using Sweeprr.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,6 +21,23 @@ builder.Services.AddSweeprrAuth();
 
 builder.Services.AddScoped<IConnectionService, ConnectionService>();
 builder.Services.AddScoped<IConnectionTestService, ConnectionTestService>();
+builder.Services.AddScoped<IMediaMatchingService, MediaMatchingService>();
+
+// Typed HTTP clients (Jellyfin, Radarr, Sonarr) with Polly resilience pipelines.
+// Registers IIntegrationClientFactory + named HttpClient pools.
+builder.Services.AddSweeprrHttpClients();
+
+// Playstate cache — singleton so both the WS service and the rule engine (Sprint 3)
+// share the same in-memory store without additional locking at the DI layer.
+builder.Services.AddSingleton<IPlaystateCache, PlaystateCache>();
+
+// Jellyfin WebSocket service — register the concrete type as a singleton first so
+// that AddHostedService and IJellyfinWebSocketStatus both resolve the same instance.
+builder.Services.AddSingleton<JellyfinWebSocketService>();
+builder.Services.AddSingleton<IJellyfinWebSocketStatus>(
+    sp => sp.GetRequiredService<JellyfinWebSocketService>());
+builder.Services.AddHostedService(
+    sp => sp.GetRequiredService<JellyfinWebSocketService>());
 
 // Rate limiter: fixed window, 10 attempts / 60 s per IP — applied to POST /api/auth/login.
 builder.Services.AddRateLimiter(options =>
