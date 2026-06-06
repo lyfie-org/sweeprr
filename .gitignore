@@ -34,3 +34,5 @@ Thumbs.db
 .idea/
 *.swp
 /.claude
+/.agents
+skills-lock.json

@@ -34,11 +34,13 @@ export function TableRow({
 export function TableCell({
   children,
   className = '',
+  style,
 }: {
   children: React.ReactNode
   className?: string
+  style?: React.CSSProperties
 }) {
-  return <td className={`table__cell ${className}`}>{children}</td>
+  return <td className={`table__cell ${className}`} style={style}>{children}</td>
 }
 
 export function TableHeaderCell({

@@ -19,18 +19,32 @@ public class ConnectionsController : ControllerBase
 
     // ── CRUD (Story 1.2) ─────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Retrieves all saved server connections.
+    /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(IEnumerable<ConnectionResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll()
         => Ok(await _connections.GetAllAsync());
 
+    /// <summary>
+    /// Retrieves a specific connection by ID.
+    /// </summary>
     [HttpGet("{id:int}")]
+    [ProducesResponseType(typeof(ConnectionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(int id)
     {
         var conn = await _connections.GetByIdAsync(id);
         return conn is null ? NotFound() : Ok(conn);
     }
 
+    /// <summary>
+    /// Creates a new server connection.
+    /// </summary>
     [HttpPost]
+    [ProducesResponseType(typeof(object), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] ConnectionRequest request)
     {
         if (!TryValidateUrl(request.BaseUrl, out var urlError))
@@ -48,7 +62,13 @@ public class ConnectionsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Updates an existing server connection.
+    /// </summary>
     [HttpPut("{id:int}")]
+    [ProducesResponseType(typeof(ConnectionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Update(int id, [FromBody] ConnectionRequest request)
     {
         if (!TryValidateUrl(request.BaseUrl, out var urlError))
@@ -65,7 +85,12 @@ public class ConnectionsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Deletes a server connection by ID.
+    /// </summary>
     [HttpDelete("{id:int}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(int id)
     {
         var deleted = await _connections.DeleteAsync(id);
@@ -79,6 +104,7 @@ public class ConnectionsController : ControllerBase
     /// Decrypts the stored key, performs a live handshake, and persists the result.
     /// </summary>
     [HttpPost("{id:int}/test")]
+    [ProducesResponseType(typeof(ConnectionTestResult), StatusCodes.Status200OK)]
     public async Task<IActionResult> TestSaved(int id)
     {
         var result = await _tester.TestSavedAsync(id);
@@ -90,6 +116,8 @@ public class ConnectionsController : ControllerBase
     /// Allows verifying a connection before committing it to the database.
     /// </summary>
     [HttpPost("test-unsaved")]
+    [ProducesResponseType(typeof(ConnectionTestResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> TestUnsaved([FromBody] ConnectionTestRequest request)
     {
         if (!TryValidateUrl(request.BaseUrl, out var urlError))

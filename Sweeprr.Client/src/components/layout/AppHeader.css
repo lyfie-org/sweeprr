@@ -1,0 +1,42 @@
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  background: var(--glass-bg);
+  border-bottom: 1px solid var(--glass-border);
+  backdrop-filter: var(--blur);
+  height: 60px;
+  flex-shrink: 0;
+}
+
+.app-header__logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+}
+
+.app-header__logo-img {
+  height: 32px;
+  width: auto;
+  border-radius: var(--radius-sm);
+}
+
+.app-header__wordmark {
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+  line-height: 1;
+}
+
+.app-header__spacer {
+  flex: 1;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .app-header {
+    background: var(--bg-surface);
+  }
+}

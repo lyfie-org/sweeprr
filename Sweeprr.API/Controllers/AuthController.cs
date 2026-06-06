@@ -25,6 +25,8 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("setup")]
     [AllowAnonymous]
+    [ProducesResponseType(typeof(AuthTokenResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Setup([FromBody] SetupRequest request)
     {
         if (!await _auth.IsFirstRunAsync())
@@ -49,6 +51,8 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     [AllowAnonymous]
     [EnableRateLimiting("login")]
+    [ProducesResponseType(typeof(AuthTokenResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var token = await _auth.LoginAsync(request.Username, request.Password);
@@ -64,6 +68,8 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpGet("me")]
     [Authorize]
+    [ProducesResponseType(typeof(MeResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult Me()
     {
         var sub = User.FindFirst(ClaimTypes.NameIdentifier)
@@ -89,6 +95,7 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpGet("status")]
     [AllowAnonymous]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public async Task<IActionResult> Status()
     {
         var isFirstRun = await _auth.IsFirstRunAsync();
