@@ -19,6 +19,8 @@ import {
   Spinner,
   useToast,
 } from '../components/ui'
+import { AppHeader } from '../components/layout/AppHeader'
+import logoSrc from '../assets/sweeprr_logo.png'
 import './KitchenSink.css'
 
 const DEMO_ROWS = [
@@ -47,10 +49,26 @@ export function KitchenSink() {
 
   return (
     <div className="ks">
+      <AppHeader>
+        <StatusDot status="connected" label="Realtime" />
+      </AppHeader>
+
+      <div style={{ padding: 'var(--space-8)' }}>
+
       <header className="ks__header">
         <h1 className="ks__title">Kitchen Sink</h1>
         <p className="ks__subtitle">Design system preview — all primitive components</p>
       </header>
+
+      {/* Branding */}
+      <section className="ks__section">
+        <p className="ks__section-title">Branding</p>
+        <div className="ks__row">
+          <img src={logoSrc} alt="Sweeprr logo" style={{ height: '48px', borderRadius: 'var(--radius-md)' }} />
+          <img src={logoSrc} alt="Sweeprr logo (sm)" style={{ height: '28px', borderRadius: 'var(--radius-sm)' }} />
+          <img src={logoSrc} alt="Sweeprr logo (xs)" style={{ height: '20px', borderRadius: 'var(--radius-sm)' }} />
+        </div>
+      </section>
 
       {/* Colors */}
       <section className="ks__section">
@@ -378,6 +396,8 @@ export function KitchenSink() {
           ))}
         </div>
       </section>
+
+      </div>{/* end padding wrapper */}
     </div>
   )
 }

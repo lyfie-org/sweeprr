@@ -1,0 +1,175 @@
+/* ── Page layout ─────────────────────────────────────────────────────────── */
+
+.rules-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.rules-page__loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-16);
+}
+
+.rules-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.rules-page__title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  line-height: var(--line-height-tight);
+}
+
+.rules-page__subtitle {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* ── Rules grid ───────────────────────────────────────────────────────────── */
+
+.rules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-4);
+}
+
+/* ── Rule card ────────────────────────────────────────────────────────────── */
+
+.rule-card {
+  transition: box-shadow var(--transition-base), opacity var(--transition-base);
+}
+
+.rule-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.rule-card--disabled {
+  opacity: 0.65;
+}
+
+.rule-card__header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin-bottom: var(--space-3);
+}
+
+.rule-card__icon-col {
+  padding-top: 2px;
+}
+
+.rule-card__media-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: rgba(108, 99, 255, 0.12);
+  border: 1px solid rgba(108, 99, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.rule-card__meta {
+  min-width: 0;
+}
+
+.rule-card__name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rule-card__name {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  line-height: var(--line-height-snug);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-card__description {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rule-card__toggle {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.rule-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/* Make badges with icons look nice */
+.rule-card__badges .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rule-card__footer-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.rule-card__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+
+.rules-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+}
+
+.rules-empty__icon {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.rules-empty__title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.rules-empty__body {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  max-width: 420px;
+  line-height: var(--line-height-base);
+}

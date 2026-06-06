@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Background;
 using Sweeprr.API.Data;
 using Sweeprr.API.Dtos.Rules;
+using Sweeprr.API.Integrations;
 using Sweeprr.API.Models;
+using Sweeprr.API.Services;
 using Sweeprr.API.Services.Rules;
 
 namespace Sweeprr.API.Controllers;
@@ -15,15 +17,24 @@ public sealed class RuleGroupsController : ControllerBase
     private readonly SweeprrDbContext _db;
     private readonly IRuleValidationService _validator;
     private readonly SchedulerHostedService _scheduler;
+    private readonly IIntegrationClientFactory _clientFactory;
+    private readonly IMediaPopulationService _populationService;
+    private readonly IRuleEvaluator _evaluator;
 
     public RuleGroupsController(
         SweeprrDbContext db,
         IRuleValidationService validator,
-        SchedulerHostedService scheduler)
+        SchedulerHostedService scheduler,
+        IIntegrationClientFactory clientFactory,
+        IMediaPopulationService populationService,
+        IRuleEvaluator evaluator)
     {
         _db = db;
         _validator = validator;
         _scheduler = scheduler;
+        _clientFactory = clientFactory;
+        _populationService = populationService;
+        _evaluator = evaluator;
     }
 
     // ── Query ────────────────────────────────────────────────────────────────
@@ -61,6 +72,109 @@ public sealed class RuleGroupsController : ControllerBase
         )).ToList();
 
         return Ok(new FieldsMetaResponse(fields));
+    }
+
+    // ── Tags proxy (for Tag multiselect in the Rule Builder UI) ─────────────
+
+    /// <summary>
+    /// Fetches tags from a Radarr or Sonarr connection and returns them as
+    /// simple { id, label } pairs for the Tag field multiselect in the Rule Builder.
+    /// </summary>
+    [HttpGet("tags")]
+    public async Task<IActionResult> GetTags([FromQuery] int connectionId, CancellationToken ct)
+    {
+        // Resolve connection type from DB first so we surface a helpful 400 if it is wrong
+        var conn = await _db.ServerConnections
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == connectionId, ct);
+
+        if (conn is null)
+            return NotFound(new { error = $"Connection {connectionId} not found." });
+
+        if (conn.Type == ConnectionType.Jellyfin)
+            return BadRequest(new { error = "Tags are only available for Radarr or Sonarr connections." });
+
+        if (conn.Type == ConnectionType.Radarr)
+        {
+            var client = await _clientFactory.CreateRadarrClientAsync(connectionId, ct);
+            if (client is null)
+                return StatusCode(502, new { error = "Could not connect to Radarr — check connection settings." });
+
+            var result = await client.GetTagsAsync(ct);
+            if (result is not Integrations.HttpResult<System.Collections.Generic.IReadOnlyList<Integrations.Radarr.Models.RadarrTag>>.Success ok)
+                return StatusCode(502, new { error = "Failed to fetch tags from Radarr." });
+
+            return Ok(new TagsResponse(ok.Value.Select(t => new TagDto(t.Id, t.Label)).ToList()));
+        }
+        else // Sonarr
+        {
+            var client = await _clientFactory.CreateSonarrClientAsync(connectionId, ct);
+            if (client is null)
+                return StatusCode(502, new { error = "Could not connect to Sonarr — check connection settings." });
+
+            var result = await client.GetTagsAsync(ct);
+            if (result is not Integrations.HttpResult<System.Collections.Generic.IReadOnlyList<Integrations.Sonarr.Models.SonarrTag>>.Success okS)
+                return StatusCode(502, new { error = "Failed to fetch tags from Sonarr." });
+
+            return Ok(new TagsResponse(okS.Value.Select(t => new TagDto(t.Id, t.Label)).ToList()));
+        }
+    }
+
+    // ── Preview (live match-count for Rule Builder chip) ───────────────────────
+
+    /// <summary>
+    /// Runs rule evaluation against the current scan data without persisting anything.
+    /// Returns a match count and up to 5 sample titles for the "Would match N" chip.
+    /// </summary>
+    [HttpPost("preview")]
+    public async Task<IActionResult> Preview([FromBody] PreviewRequest request, CancellationToken ct)
+    {
+        var validation = _validator.Validate(request.MediaType, request.Conditions);
+        if (!validation.IsValid)
+            return UnprocessableEntity(new { errors = validation.Errors });
+
+        // Build a transient (unsaved) RuleGroup to drive the evaluator
+        var transientGroup = new RuleGroup
+        {
+            Id          = 0,
+            Name        = "__preview__",
+            MediaType   = request.MediaType,
+            IsEnabled   = true,
+            Action      = SweepAction.DeleteAndUnmonitor,
+            CreatedAt   = DateTime.UtcNow,
+            UpdatedAt   = DateTime.UtcNow,
+            Rules       = MapConditions(request.Conditions),
+        };
+
+        IReadOnlyList<MediaContext> items;
+        try
+        {
+            items = await _populationService.PopulateAsync(transientGroup, ct);
+        }
+        catch (Exception ex)
+        {
+            // If population fails (e.g. no connections configured), return 0 with a note
+            return Ok(new PreviewResponse(
+                MatchCount: 0,
+                SampleTitles: [],
+                Note: $"Could not populate media data: {ex.Message}"));
+        }
+
+        if (items.Count == 0)
+        {
+            return Ok(new PreviewResponse(
+                MatchCount: 0,
+                SampleTitles: [],
+                Note: "No scan data available yet — run a scan first."));
+        }
+
+        var results = await _evaluator.EvaluateAsync(transientGroup, items, ct);
+        var matched = results.Where(r => r.IsMatch).ToList();
+
+        return Ok(new PreviewResponse(
+            MatchCount: matched.Count,
+            SampleTitles: matched.Take(5).Select(r => r.Item.Title).ToList(),
+            Note: null));
     }
 
     // ── Create ───────────────────────────────────────────────────────────────

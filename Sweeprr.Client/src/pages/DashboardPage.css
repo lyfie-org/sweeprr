@@ -1,0 +1,217 @@
+.dashboard__header {
+  margin-bottom: var(--space-6);
+}
+
+.dashboard__title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* ── Dry-run banner ──────────────────────────────────────────────────────── */
+
+.dashboard__dry-run-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--warning-bg);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--warning);
+}
+
+.dashboard__dry-run-banner strong {
+  font-weight: var(--font-weight-semibold);
+}
+
+/* ── Stat cards grid ─────────────────────────────────────────────────────── */
+
+.dashboard__stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+@media (max-width: 1100px) {
+  .dashboard__stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard__stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Individual stat card ────────────────────────────────────────────────── */
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.stat-card__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--glass-bg);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.stat-card__label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.stat-card__value {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--accent);
+  line-height: 1;
+  margin: 0;
+  letter-spacing: -1px;
+}
+
+.stat-card__sub {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Count-up animation */
+@media (prefers-reduced-motion: no-preference) {
+  .stat-card__value {
+    animation: stat-pop 0.4s ease both;
+  }
+}
+
+@keyframes stat-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* WS state colours */
+.stat-card__value--connected    { color: var(--success); }
+.stat-card__value--reconnecting { color: var(--warning); }
+.stat-card__value--offline      { color: var(--text-muted); }
+
+/* ── Bottom row ──────────────────────────────────────────────────────────── */
+
+.dashboard__bottom {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .dashboard__bottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Sparkline card ──────────────────────────────────────────────────────── */
+
+.sparkline-card__chart {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--glass-border);
+}
+
+.sparkline-card__legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--space-2);
+}
+
+/* ── Activity feed ───────────────────────────────────────────────────────── */
+
+.activity-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.activity-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: var(--text-sm);
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-item__icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.activity-item__body {
+  min-width: 0;
+}
+
+.activity-item__message {
+  color: var(--text-primary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.activity-item__time {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Empty / skeleton states ─────────────────────────────────────────────── */
+
+.dashboard__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-10);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.dashboard__skeleton {
+  height: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--glass-bg);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; }
+}

@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
+using Scalar.AspNetCore;
 using Sweeprr.API.Background;
 using Sweeprr.API.Configuration;
 using Sweeprr.API.Integrations.Jellyfin.WebSocket;
@@ -73,6 +74,19 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference(options =>
+    {
+        options.Title = "Sweeprr API";
+        options.Favicon = "/favicon-32x32.png";
+        options.HeaderContent = "<img src='/sweeprr_logo.png' alt='Sweeprr' style='height:28px;margin-right:10px;vertical-align:middle;' />";
+        options.Theme = ScalarTheme.Purple;
+        options.DarkMode = true;
+        options.DefaultHttpClient = new(ScalarTarget.CSharp, ScalarClient.HttpClient);
+        options.Authentication = new ScalarAuthenticationOptions
+        {
+            PreferredSecuritySchemes = ["Bearer"],
+        };
+    });
 }
 
 await app.Services.MigrateAndSeedAsync();

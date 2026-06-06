@@ -1,24 +1,45 @@
-import { Broom } from '@phosphor-icons/react'
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
+import { AppShell } from './components/layout/AppShell'
+import { ProtectedRoute } from './components/router/ProtectedRoute'
+import { LoginPage } from './pages/LoginPage'
+import { SetupPage } from './pages/SetupPage'
+import { DashboardPage } from './pages/DashboardPage'
+import { SweepPage } from './pages/SweepPage'
+import { RulesPage } from './pages/RulesPage'
+import { ConnectionsPage } from './pages/ConnectionsPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { LogsPage } from './pages/LogsPage'
 import { KitchenSink } from './pages/KitchenSink'
 import './styles/app.css'
 
-const showKitchenSink =
-  import.meta.env.DEV &&
-  new URLSearchParams(window.location.search).has('ks')
+const router = createBrowserRouter([
+  // Dev kitchen sink (preserves existing ?ks shortcut via direct route)
+  ...(import.meta.env.DEV ? [{ path: '/__kitchen-sink', element: <KitchenSink /> }] : []),
+
+  { path: '/login', element: <LoginPage /> },
+  { path: '/setup', element: <SetupPage /> },
+
+  {
+    element: <ProtectedRoute />,
+    children: [
+      {
+        element: <AppShell />,
+        children: [
+          { index: true,           element: <DashboardPage />   },
+          { path: 'sweep',         element: <SweepPage />       },
+          { path: 'rules',         element: <RulesPage />       },
+          { path: 'connections',   element: <ConnectionsPage /> },
+          { path: 'settings',      element: <SettingsPage />    },
+          { path: 'logs',          element: <LogsPage />        },
+        ],
+      },
+    ],
+  },
+
+  // Fallback
+  { path: '*', element: <Navigate to="/" replace /> },
+])
 
 export default function App() {
-  if (showKitchenSink) return <KitchenSink />
-
-  return (
-    <div className="boot-screen">
-      <div className="boot-card">
-        <div className="boot-logo">
-          <Broom size={48} weight="duotone" color="var(--accent)" />
-        </div>
-        <h1 className="boot-title">Sweeprr</h1>
-        <p className="boot-subtitle">Media cleanup for self-hosters.</p>
-        <div className="boot-pulse" aria-label="Loading" />
-      </div>
-    </div>
-  )
+  return <RouterProvider router={router} />
 }
