@@ -111,14 +111,13 @@ jobs:
           git tag ${{ env.NEW_TAG }}
           git push origin ${{ env.NEW_TAG }}
 
-      - name: Log in to GHCR
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push multi-arch image to GHCR
+      - name: Build and push multi-arch image to Docker Hub
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -126,8 +125,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ env.NEW_TAG }}
-            ghcr.io/${{ github.repository }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/sweeprr:${{ env.NEW_TAG }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/sweeprr:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
