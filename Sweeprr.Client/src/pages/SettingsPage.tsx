@@ -6,6 +6,7 @@ import {
   Moon,
 } from '@phosphor-icons/react'
 import { settingsApi, type SettingsDto, type UpdateSettingsRequest } from '../api/settings'
+import { systemApi } from '../api/system'
 import { ApiError } from '../api/client'
 import {
   Button,
@@ -105,6 +106,13 @@ export function SettingsPage() {
   const [savedFlash, setSavedFlash] = useState(false)
   const [cronError, setCronError] = useState<string | null>(null)
   const [theme, setTheme] = useState<'light' | 'dark'>(getStoredTheme)
+  const [version, setVersion] = useState<string>('')
+
+  useEffect(() => {
+    systemApi.getInfo()
+      .then(data => setVersion(data.version))
+      .catch(() => {})
+  }, [])
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -448,6 +456,50 @@ export function SettingsPage() {
               >
                 Switch to {theme === 'dark' ? 'light' : 'dark'}
               </Button>
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* ── About ── */}
+        <Card>
+          <CardBody>
+            <p className="settings-section__label">About</p>
+            <div className="settings-about__body">
+              <div className="settings-about__row">
+                <span className="settings-about__title">Sweeprr</span>
+                {version && <span className="settings-about__version">v{version}</span>}
+              </div>
+              <p className="settings-about__description">
+                Self-hosted media library management app. Integrates Jellyfin with Radarr/Sonarr to automatically sweep watched media.
+              </p>
+              <div className="settings-about__links">
+                <a
+                  href="https://github.com/lyfie-org/sweeprr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="settings-about__link"
+                >
+                  GitHub
+                </a>
+                <span className="settings-about__divider">•</span>
+                <a
+                  href="https://github.com/lyfie-org/sweeprr/blob/main/LICENSE"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="settings-about__link"
+                >
+                  License
+                </a>
+                <span className="settings-about__divider">•</span>
+                <a
+                  href="/scalar/v1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="settings-about__link"
+                >
+                  API Docs
+                </a>
+              </div>
             </div>
           </CardBody>
         </Card>

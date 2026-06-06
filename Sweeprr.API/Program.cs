@@ -8,15 +8,66 @@ using Sweeprr.API.Integrations.Jellyfin.WebSocket;
 using Sweeprr.API.Integrations.Matching;
 using Sweeprr.API.Services;
 using Sweeprr.API.Services.Rules;
+using Serilog;
+using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var configDir = builder.Configuration["ConfigDir"] ?? "/config";
+Directory.CreateDirectory(Path.Combine(configDir, "logs"));
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File(
+        path: Path.Combine(configDir, "logs", "sweeprr-.log"),
+        rollingInterval: RollingInterval.Day,
+        rollOnFileSizeLimit: true,
+        fileSizeLimitBytes: 10 * 1024 * 1024,
+        retainedFileCountLimit: 30,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] ({SourceContext}) {Message:lj} {Properties:j}{NewLine}{Exception}"
+    )
+    .CreateLogger();
+
+builder.Host.UseSerilog();
+
 builder.Services.AddControllers();
 
-if (builder.Environment.IsDevelopment())
+builder.Services.AddOpenApi(options =>
 {
-    builder.Services.AddOpenApi();
-}
+    options.AddDocumentTransformer((document, context, cancellationToken) =>
+    {
+        document.Components ??= new Microsoft.OpenApi.Models.OpenApiComponents();
+        document.Components.SecuritySchemes.Add("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+        {
+            Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+            Name = "Authorization",
+            Description = "Enter JWT Bearer token."
+        });
+
+        foreach (var operation in document.Paths.Values.SelectMany(p => p.Operations))
+        {
+            operation.Value.Security.Add(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+            {
+                [new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                    {
+                        Id = "Bearer",
+                        Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme
+                    }
+                }] = Array.Empty<string>()
+            });
+        }
+        return Task.CompletedTask;
+    });
+});
 
 builder.Services.AddSweeprrDataProtection(builder.Configuration);
 builder.Services.AddSweeprrDatabase(builder.Configuration);
@@ -71,23 +122,20 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+app.MapOpenApi().AllowAnonymous();
+app.MapScalarApiReference(options =>
 {
-    app.MapOpenApi();
-    app.MapScalarApiReference(options =>
+    options.Title = "Sweeprr API";
+    options.Favicon = "/sweeprr_logo.png";
+    options.HeaderContent = "<img src='/sweeprr_logo.png' alt='Sweeprr' style='height:28px;margin-right:10px;vertical-align:middle;' />";
+    options.Theme = ScalarTheme.Purple;
+    options.DarkMode = true;
+    options.DefaultHttpClient = new(ScalarTarget.CSharp, ScalarClient.HttpClient);
+    options.Authentication = new ScalarAuthenticationOptions
     {
-        options.Title = "Sweeprr API";
-        options.Favicon = "/favicon-32x32.png";
-        options.HeaderContent = "<img src='/sweeprr_logo.png' alt='Sweeprr' style='height:28px;margin-right:10px;vertical-align:middle;' />";
-        options.Theme = ScalarTheme.Purple;
-        options.DarkMode = true;
-        options.DefaultHttpClient = new(ScalarTarget.CSharp, ScalarClient.HttpClient);
-        options.Authentication = new ScalarAuthenticationOptions
-        {
-            PreferredSecuritySchemes = ["Bearer"],
-        };
-    });
-}
+        PreferredSecuritySchemes = ["Bearer"],
+    };
+}).AllowAnonymous();
 
 await app.Services.MigrateAndSeedAsync();
 
@@ -113,13 +161,50 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
+app.UseRouting();
+
+// Step 1 — SPA-like catch-all for browser navigation (unmatched routes)
+// Placed after UseRouting so GetEndpoint() works, but before UseAuthentication/UseAuthorization
+// so unauthorized users don't get blocked with 401 when navigating to unmatched endpoints.
+app.Use(async (context, next) =>
+{
+    if (context.GetEndpoint() == null)
+    {
+        var acceptHeader = context.Request.Headers.Accept.ToString();
+        if (acceptHeader.Contains("text/html", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.Redirect("/scalar/v1");
+        }
+        else
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new { error = "Not found", docsUrl = "/scalar/v1" });
+        }
+        return;
+    }
+    await next();
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 
 // /api/* routes take precedence over the SPA fallback
 app.MapControllers();
 
-// Any unmatched route returns index.html for client-side routing
-app.MapFallbackToFile("index.html");
+// Step 2 — Root redirect:
+app.MapGet("/", () => Results.Redirect("/scalar/v1", permanent: false)).AllowAnonymous();
 
-app.Run();
+try
+{
+    Log.Information("Starting web host");
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Host terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

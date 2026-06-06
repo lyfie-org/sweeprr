@@ -26,7 +26,11 @@ public sealed class DashboardController : ControllerBase
         _wsStatus = wsStatus;
     }
 
+    /// <summary>
+    /// Retrieves aggregate dashboard statistics including swept items and queue size.
+    /// </summary>
     [HttpGet("stats")]
+    [ProducesResponseType(typeof(DashboardStatsDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetStats(CancellationToken ct)
     {
         var cutoff30d = DateTime.UtcNow.AddDays(-30);
@@ -67,7 +71,11 @@ public sealed class DashboardController : ControllerBase
         return Ok(dto);
     }
 
+    /// <summary>
+    /// Retrieves recent activity logs.
+    /// </summary>
     [HttpGet("activity")]
+    [ProducesResponseType(typeof(IReadOnlyList<ActivityLogEntryDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetActivity([FromQuery] int limit = 20, CancellationToken ct = default)
     {
         limit = Math.Clamp(limit, 1, 100);
@@ -88,7 +96,11 @@ public sealed class DashboardController : ControllerBase
         return Ok(entries);
     }
 
+    /// <summary>
+    /// Retrieves historical data points for the dashboard sparkline charts.
+    /// </summary>
     [HttpGet("sparkline")]
+    [ProducesResponseType(typeof(IReadOnlyList<SparklinePointDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetSparkline([FromQuery] int days = 30, CancellationToken ct = default)
     {
         days = Math.Clamp(days, 7, 90);

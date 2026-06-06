@@ -296,20 +296,10 @@ public sealed class SweepExecutor : ISweepExecutor
         RadarrClient client, int movieId, SweepItem item, CancellationToken ct)
     {
         _logger.LogWarning(
-            "DeleteOnly on '{Title}': deleting without unmonitoring — Radarr may re-download",
+            "DeleteOnly on '{Title}': escalating to DeleteAndUnmonitor to satisfy safety invariant (must always unmonitor)",
             item.Title);
 
-        var result = await client.DeleteMovieAsync(
-            movieId, deleteFiles: true, addExclusion: item.RuleGroup.AddImportExclusion, ct);
-
-        if (result is HttpResult<EmptyResponse>.DefinitiveFailure { StatusCode: 404 }) return true;
-        if (result is not HttpResult<EmptyResponse>.Success)
-        {
-            item.Status = SweepItemStatus.Failed;
-            item.SkippedReason = FailureReason(result, "Delete");
-            return false;
-        }
-        return true;
+        return await DeleteAndUnmonitorRadarrAsync(client, movieId, item, ct);
     }
 
     // ── Sonarr group ─────────────────────────────────────────────────────────
@@ -512,23 +502,10 @@ public sealed class SweepExecutor : ISweepExecutor
         SonarrClient client, int seriesId, int? seasonNumber, SweepItem item, CancellationToken ct)
     {
         _logger.LogWarning(
-            "DeleteOnly on '{Title}': deleting without unmonitoring — Sonarr may re-download",
+            "DeleteOnly on '{Title}': escalating to DeleteAndUnmonitor to satisfy safety invariant (must always unmonitor)",
             item.Title);
 
-        if (seasonNumber.HasValue)
-            return await DeleteSeasonFilesAsync(client, seriesId, seasonNumber.Value, item, ct);
-
-        var result = await client.DeleteSeriesAsync(
-            seriesId, deleteFiles: true, addExclusion: item.RuleGroup.AddImportExclusion, ct);
-
-        if (result is HttpResult<EmptyResponse>.DefinitiveFailure { StatusCode: 404 }) return true;
-        if (result is not HttpResult<EmptyResponse>.Success)
-        {
-            item.Status = SweepItemStatus.Failed;
-            item.SkippedReason = FailureReason(result, "Delete series");
-            return false;
-        }
-        return true;
+        return await DeleteAndUnmonitorSonarrAsync(client, seriesId, seasonNumber, item, ct);
     }
 
     private async Task<bool> DeleteSeriesIfEmptyAsync(

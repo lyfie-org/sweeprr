@@ -21,6 +21,7 @@ public sealed class JellyfinStatusController : ControllerBase
     /// Used by the frontend realtime status pill ("Realtime: connected" indicator).
     /// </summary>
     [HttpGet("status")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     public IActionResult GetStatus() => Ok(new
     {
         state           = _wsStatus.State.ToString(),

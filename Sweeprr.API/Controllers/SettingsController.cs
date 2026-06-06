@@ -14,7 +14,11 @@ public sealed class SettingsController : ControllerBase
 
     public SettingsController(SweeprrDbContext db) => _db = db;
 
+    /// <summary>
+    /// Retrieves the global application settings.
+    /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(SettingsDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
         var s = await _db.GlobalSettings.AsNoTracking().FirstOrDefaultAsync(ct)
@@ -22,7 +26,13 @@ public sealed class SettingsController : ControllerBase
         return Ok(ToDto(s));
     }
 
+    /// <summary>
+    /// Partially updates the global application settings.
+    /// </summary>
     [HttpPatch]
+    [ProducesResponseType(typeof(SettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Patch([FromBody] UpdateSettingsRequest req, CancellationToken ct)
     {
         var s = await _db.GlobalSettings.FirstOrDefaultAsync(ct);

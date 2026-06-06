@@ -116,3 +116,10 @@
     background: var(--bg-surface);
   }
 }
+
+.sidebar__version {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: 0 var(--space-3);
+  margin-top: var(--space-1);
+}

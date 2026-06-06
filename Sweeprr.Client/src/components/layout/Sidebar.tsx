@@ -1,9 +1,11 @@
+import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   House, Broom, ListChecks, PlugsConnected, Gear, Article, SignOut,
 } from '@phosphor-icons/react'
 import { useAuth } from '../../context/AuthContext'
 import { RealtimePill } from './RealtimePill'
+import { systemApi } from '../../api/system'
 import './Sidebar.css'
 
 interface NavItem {
@@ -27,6 +29,13 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed }: SidebarProps) {
   const { user, logout } = useAuth()
+  const [version, setVersion] = useState<string>('')
+
+  useEffect(() => {
+    systemApi.getInfo()
+      .then(data => setVersion(data.version))
+      .catch(() => {})
+  }, [])
 
   return (
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
@@ -59,6 +68,12 @@ export function Sidebar({ collapsed }: SidebarProps) {
           <SignOut size={18} weight="duotone" />
           {!collapsed && <span>{user?.username}</span>}
         </button>
+
+        {!collapsed && version && (
+          <div className="sidebar__version" data-testid="sidebar-version">
+            v{version}
+          </div>
+        )}
       </div>
     </aside>
   )

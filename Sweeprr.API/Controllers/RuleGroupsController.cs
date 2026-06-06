@@ -39,7 +39,11 @@ public sealed class RuleGroupsController : ControllerBase
 
     // ── Query ────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Retrieves all rule groups.
+    /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(IEnumerable<RuleGroupResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll()
     {
         var groups = await _db.RuleGroups
@@ -51,7 +55,12 @@ public sealed class RuleGroupsController : ControllerBase
         return Ok(groups.Select(ToResponse));
     }
 
+    /// <summary>
+    /// Retrieves a specific rule group by ID.
+    /// </summary>
     [HttpGet("{id:int}")]
+    [ProducesResponseType(typeof(RuleGroupResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(int id)
     {
         var group = await FindGroupAsync(id);
@@ -60,7 +69,11 @@ public sealed class RuleGroupsController : ControllerBase
 
     // ── Fields metadata (contract for the Rule Builder UI, Story 5.5) ────────
 
+    /// <summary>
+    /// Retrieves metadata about available rule fields.
+    /// </summary>
     [HttpGet("fields")]
+    [ProducesResponseType(typeof(FieldsMetaResponse), StatusCodes.Status200OK)]
     public IActionResult GetFieldsMeta()
     {
         var fields = RuleFieldMeta.All.Select(kvp => new FieldDescriptorResponse(
@@ -81,6 +94,10 @@ public sealed class RuleGroupsController : ControllerBase
     /// simple { id, label } pairs for the Tag field multiselect in the Rule Builder.
     /// </summary>
     [HttpGet("tags")]
+    [ProducesResponseType(typeof(TagsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> GetTags([FromQuery] int connectionId, CancellationToken ct)
     {
         // Resolve connection type from DB first so we surface a helpful 400 if it is wrong
@@ -127,6 +144,8 @@ public sealed class RuleGroupsController : ControllerBase
     /// Returns a match count and up to 5 sample titles for the "Would match N" chip.
     /// </summary>
     [HttpPost("preview")]
+    [ProducesResponseType(typeof(PreviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> Preview([FromBody] PreviewRequest request, CancellationToken ct)
     {
         var validation = _validator.Validate(request.MediaType, request.Conditions);
@@ -179,7 +198,13 @@ public sealed class RuleGroupsController : ControllerBase
 
     // ── Create ───────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Creates a new rule group.
+    /// </summary>
     [HttpPost]
+    [ProducesResponseType(typeof(RuleGroupResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> Create([FromBody] RuleGroupRequest request)
     {
         var validation = _validator.Validate(request.MediaType, request.Conditions);
@@ -212,7 +237,14 @@ public sealed class RuleGroupsController : ControllerBase
 
     // ── Update ───────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Updates an existing rule group.
+    /// </summary>
     [HttpPut("{id:int}")]
+    [ProducesResponseType(typeof(RuleGroupResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> Update(int id, [FromBody] RuleGroupRequest request)
     {
         var group = await FindGroupAsync(id);
@@ -245,7 +277,13 @@ public sealed class RuleGroupsController : ControllerBase
 
     // ── Delete ───────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Deletes a rule group.
+    /// </summary>
     [HttpDelete("{id:int}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Delete(int id)
     {
         var group = await _db.RuleGroups
@@ -270,7 +308,13 @@ public sealed class RuleGroupsController : ControllerBase
 
     // ── Manual scan trigger ────────────────────────────────────────────────
 
+    /// <summary>
+    /// Manually triggers a scan for a specific rule group.
+    /// </summary>
     [HttpPost("{id:int}/scan")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Scan(int id, CancellationToken ct)
     {
         var exists = await _db.RuleGroups.AnyAsync(g => g.Id == id, ct);
