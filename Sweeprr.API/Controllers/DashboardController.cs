@@ -54,6 +54,7 @@ public sealed class DashboardController : ControllerBase
 
         var settings = await _db.GlobalSettings
             .AsNoTracking()
+            .Where(s => s.Id == 1)
             .Select(s => s.GlobalDryRun)
             .FirstOrDefaultAsync(ct);
 

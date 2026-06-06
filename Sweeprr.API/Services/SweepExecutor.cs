@@ -37,7 +37,7 @@ public sealed class SweepExecutor : ISweepExecutor
     public async Task<ExecuteSweepResult> ExecuteAsync(
         ExecuteSweepRequest request, CancellationToken ct = default)
     {
-        var settings = await _db.GlobalSettings.AsNoTracking().FirstOrDefaultAsync(ct)
+        var settings = await _db.GlobalSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct)
             ?? new GlobalSettings();
 
         bool isDryRun = settings.GlobalDryRun;

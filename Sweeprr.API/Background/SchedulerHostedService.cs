@@ -130,7 +130,7 @@ public sealed class SchedulerHostedService : BackgroundService
             await using var scope = _scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<SweeprrDbContext>();
 
-            var settings = await db.GlobalSettings.FirstAsync(ct);
+            var settings = await db.GlobalSettings.FirstOrDefaultAsync(x => x.Id == 1, ct) ?? throw new InvalidOperationException("GlobalSettings not initialized.");
             var defaultCron = TryParseCron(settings.DefaultCron);
 
             var groups = await db.RuleGroups

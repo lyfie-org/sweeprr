@@ -47,7 +47,7 @@ public class AuthService : IAuthService
 
         _logger.LogInformation("Admin account created for {Username}.", username);
 
-        var settings = await _db.GlobalSettings.FirstAsync();
+        var settings = await _db.GlobalSettings.FirstOrDefaultAsync(x => x.Id == 1) ?? throw new InvalidOperationException("GlobalSettings not initialized.");
         return BuildToken(user, settings.JwtSecret);
     }
 
@@ -66,7 +66,7 @@ public class AuthService : IAuthService
         user.LastLoginAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
-        var settings = await _db.GlobalSettings.FirstAsync();
+        var settings = await _db.GlobalSettings.FirstOrDefaultAsync(x => x.Id == 1) ?? throw new InvalidOperationException("GlobalSettings not initialized.");
         return BuildToken(user, settings.JwtSecret);
     }
 

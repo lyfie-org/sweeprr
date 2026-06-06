@@ -27,7 +27,7 @@ public class JwtKeyProvider
 
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<SweeprrDbContext>();
-        var secret = db.GlobalSettings.AsNoTracking().Select(s => s.JwtSecret).FirstOrDefault()
+        var secret = db.GlobalSettings.AsNoTracking().Where(s => s.Id == 1).Select(s => s.JwtSecret).FirstOrDefault()
             ?? throw new InvalidOperationException("GlobalSettings not seeded — cannot resolve JWT key.");
 
         _cached = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));

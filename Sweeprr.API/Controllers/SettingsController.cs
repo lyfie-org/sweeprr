@@ -21,7 +21,7 @@ public sealed class SettingsController : ControllerBase
     [ProducesResponseType(typeof(SettingsDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> Get(CancellationToken ct)
     {
-        var s = await _db.GlobalSettings.AsNoTracking().FirstOrDefaultAsync(ct)
+        var s = await _db.GlobalSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct)
             ?? new Models.GlobalSettings();
         return Ok(ToDto(s));
     }
@@ -35,7 +35,7 @@ public sealed class SettingsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Patch([FromBody] UpdateSettingsRequest req, CancellationToken ct)
     {
-        var s = await _db.GlobalSettings.FirstOrDefaultAsync(ct);
+        var s = await _db.GlobalSettings.FirstOrDefaultAsync(x => x.Id == 1, ct);
         if (s is null)
             return NotFound(new { error = "GlobalSettings not initialized." });
 

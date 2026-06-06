@@ -126,7 +126,7 @@ public sealed class SweepController : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Run([FromBody] RunSweepRequest? body, CancellationToken ct)
     {
-        var settings = await _db.GlobalSettings.AsNoTracking().FirstOrDefaultAsync(ct);
+        var settings = await _db.GlobalSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct);
         var isDryRun = settings?.GlobalDryRun ?? true;
 
         if (body?.RuleGroupId.HasValue == true)
