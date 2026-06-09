@@ -177,6 +177,115 @@ public sealed class JellyfinClient : ClientBase
                 : JellyfinUserData.Empty);
     }
 
+    // ── Collections ──────────────────────────────────────────────────────────
+
+    /// <summary>Returns all BoxSet collections in the library.</summary>
+    public Task<HttpResult<IReadOnlyList<JellyfinItem>>> GetCollectionsAsync(
+        CancellationToken ct = default)
+        => GetAllItemsAsync(
+            new GetItemsRequest
+            {
+                IncludeItemTypes = ["BoxSet"],
+                Fields           = [],
+                Recursive        = true,
+                Limit            = 500
+            },
+            maxItems: 2000,
+            ct);
+
+    /// <summary>
+    /// Creates a new BoxSet collection with the given name.
+    /// Returns the new collection's Jellyfin item ID.
+    /// </summary>
+    public async Task<HttpResult<string>> CreateCollectionAsync(
+        string name, CancellationToken ct = default)
+    {
+        var path   = $"/Collections?Name={Uri.EscapeDataString(name)}&IsLocked=false";
+        var result = await PostAsync<JellyfinCollectionResponseDto>(path, body: null, ct);
+        return result.Map(dto => dto.Id);
+    }
+
+    /// <summary>Returns all items currently in the given collection (one level deep).</summary>
+    public Task<HttpResult<IReadOnlyList<JellyfinItem>>> GetCollectionItemsAsync(
+        string collectionId, CancellationToken ct = default)
+        => GetAllItemsAsync(
+            new GetItemsRequest
+            {
+                ParentId         = collectionId,
+                IncludeItemTypes = [],
+                Fields           = [],
+                Recursive        = false,
+                Limit            = 500
+            },
+            maxItems: 10_000,
+            ct);
+
+    /// <summary>Adds items to a collection. Callers must batch to ≤100 IDs per call.</summary>
+    public Task<HttpResult<EmptyResponse>> AddItemsToCollectionAsync(
+        string collectionId, IEnumerable<string> itemIds, CancellationToken ct = default)
+    {
+        var ids = Uri.EscapeDataString(string.Join(",", itemIds));
+        return PostAsync<EmptyResponse>(
+            $"/Collections/{Uri.EscapeDataString(collectionId)}/Items?Ids={ids}",
+            body: null, ct);
+    }
+
+    /// <summary>Removes items from a collection. Callers must batch to ≤100 IDs per call.</summary>
+    public Task<HttpResult<EmptyResponse>> RemoveItemsFromCollectionAsync(
+        string collectionId, IEnumerable<string> itemIds, CancellationToken ct = default)
+    {
+        var ids = Uri.EscapeDataString(string.Join(",", itemIds));
+        return DeleteAsync(
+            $"/Collections/{Uri.EscapeDataString(collectionId)}/Items?Ids={ids}", ct);
+    }
+
+    // ── Images ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Downloads the primary poster image for the given item.
+    /// Returns raw JPEG/PNG bytes. Callers should treat the format as opaque
+    /// and re-encode as needed before uploading.
+    /// </summary>
+    public async Task<byte[]?> DownloadPosterAsync(
+        string itemId,
+        CancellationToken ct = default)
+    {
+        var url = BuildUrl($"/Items/{Uri.EscapeDataString(itemId)}/Images/Primary?maxWidth=600");
+        try
+        {
+            return await Http.GetByteArrayAsync(url, ct);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "[JellyfinClient] Failed to download poster for item {ItemId}", itemId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Uploads JPEG bytes as the primary poster for the given item.
+    /// Overwrites whatever image Jellyfin currently has stored.
+    /// </summary>
+    public async Task<bool> UploadPosterAsync(
+        string itemId,
+        byte[] jpegBytes,
+        CancellationToken ct = default)
+    {
+        var url = BuildUrl($"/Items/{Uri.EscapeDataString(itemId)}/Images/Primary");
+        try
+        {
+            using var content = new ByteArrayContent(jpegBytes);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+            using var response = await Http.PostAsync(url, content, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "[JellyfinClient] Failed to upload poster for item {ItemId}", itemId);
+            return false;
+        }
+    }
+
     // ── Delete ───────────────────────────────────────────────────────────────
 
     /// <summary>

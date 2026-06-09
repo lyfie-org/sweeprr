@@ -68,6 +68,24 @@ public sealed class RadarrClient : ClientBase
             (IReadOnlyList<RadarrHistoryRecord>)dtos.Select(ToHistoryRecord).ToList());
     }
 
+    /// <summary>
+    /// Returns disk-space usage for all paths Radarr manages.
+    /// Used to populate <c>DiskFreeSpacePercent</c> / <c>DiskFreeSpaceGb</c> rule fields.
+    /// </summary>
+    public async Task<HttpResult<(double FreePercent, double FreeGb)>> GetDiskSpaceAsync(
+        CancellationToken ct = default)
+    {
+        var result = await GetAsync<List<RadarrDiskSpaceDto>>("/api/v3/diskspace", ct);
+        return result.Map(dtos =>
+        {
+            long totalFree  = dtos.Sum(d => d.FreeSpace);
+            long totalTotal = dtos.Sum(d => d.TotalSpace);
+            double pct = totalTotal > 0 ? (double)totalFree / totalTotal * 100.0 : 0.0;
+            double gb  = totalFree / 1_073_741_824.0;
+            return (pct, gb);
+        });
+    }
+
     public async Task<HttpResult<IReadOnlyList<RadarrQualityProfile>>> GetQualityProfilesAsync(
         CancellationToken ct = default)
     {

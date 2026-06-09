@@ -30,7 +30,7 @@ namespace Sweeprr.API.Configuration;
 /// </summary>
 public static class HttpClientExtensions
 {
-    private static readonly string[] ServiceTypes = ["Jellyfin", "Radarr", "Sonarr"];
+    private static readonly string[] ServiceTypes = ["Jellyfin", "Radarr", "Sonarr", "Bazarr"];
 
     public static IServiceCollection AddSweeprrHttpClients(this IServiceCollection services)
     {

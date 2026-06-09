@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Sweeprr.API.Data;
 
@@ -10,9 +11,11 @@ using Sweeprr.API.Data;
 namespace Sweeprr.API.Data.Migrations
 {
     [DbContext(typeof(SweeprrDbContext))]
-    partial class SweeprrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260609133713_AddLeavingSoonSettings")]
+    partial class AddLeavingSoonSettings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.16");
@@ -128,13 +131,6 @@ namespace Sweeprr.API.Data.Migrations
                         .HasColumnType("REAL");
 
                     b.Property<int>("PlaybackHistoryRetentionDays")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("PosterBackupDir")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("PosterOverlaysEnabled")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");

@@ -44,6 +44,7 @@
 .conn-card__icon--jellyfin { color: #00a4dc; }
 .conn-card__icon--radarr   { color: #ffc230; }
 .conn-card__icon--sonarr   { color: #35c5f4; }
+.conn-card__icon--bazarr   { color: #38b2ac; }
 
 .conn-card__meta {
   flex: 1;

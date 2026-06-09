@@ -22,6 +22,9 @@ public abstract class ClientBase
     private readonly string _baseUrl;
     private readonly ILogger _logger;
 
+    protected HttpClient Http   => _http;
+    protected ILogger    Logger => _logger;
+
     protected ClientBase(HttpClient http, string baseUrl, ILogger logger)
     {
         _http    = http;
@@ -53,6 +56,13 @@ public abstract class ClientBase
     protected Task<HttpResult<EmptyResponse>> DeleteAsync(
         string path, CancellationToken ct = default)
         => SendAsync<EmptyResponse>(HttpMethod.Delete, path, body: null, ct);
+
+    /// <summary>
+    /// DELETE overload for endpoints that require a JSON request body (e.g. Bazarr subtitle deletion).
+    /// </summary>
+    protected Task<HttpResult<EmptyResponse>> DeleteAsync(
+        string path, object body, CancellationToken ct = default)
+        => SendAsync<EmptyResponse>(HttpMethod.Delete, path, body, ct);
 
     // ── Core dispatch ────────────────────────────────────────────────────────
 

@@ -99,6 +99,26 @@ export interface PreviewResponse {
   note: string | null
 }
 
+export interface SimulateRequest {
+  mediaType: MediaType
+  conditions: RuleConditionDto[]
+}
+
+export interface SimulateLibraryBreakdown {
+  library: string
+  matchedCount: number
+  reclaimedGb: number
+}
+
+export interface SimulateResponse {
+  matchedCount: number
+  totalReclaimedGb: number
+  categoryBreakdown: Record<string, number>
+  libraryBreakdown: SimulateLibraryBreakdown[]
+  sampleTitles: string[]
+  note: string | null
+}
+
 // ── API module ────────────────────────────────────────────────────────────────
 
 export const rulesApi = {
@@ -128,6 +148,9 @@ export const rulesApi = {
 
   preview: (req: PreviewRequest) =>
     api.post<PreviewResponse>('/api/rulegroups/preview', req),
+
+  simulate: (req: SimulateRequest) =>
+    api.post<SimulateResponse>('/api/rulegroups/simulate', req),
 
   scan: (id: number) =>
     api.post<{ ruleGroupId: number; ruleGroupName: string; itemsFlagged: number; durationMs: number }>(

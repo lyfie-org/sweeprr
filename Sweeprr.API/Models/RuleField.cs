@@ -32,4 +32,11 @@ public enum RuleField
     SeriesEnded       = 30,  // Bool: series status = "ended" in Sonarr
     IsFinale          = 31,  // Bool: season has a finale episode (finaleType != null, Sonarr v4+)
     CutoffMet         = 32,  // Bool: file quality meets the profile cutoff
+
+    // Multi-instance
+    HasComplementaryCopy = 40,  // Bool: TMDB/TVDB ID exists in another same-type *arr instance
+
+    // Disk space (connection-level, cached once per scan run)
+    DiskFreeSpacePercent = 50,  // Number: free space as a percentage of total (0–100)
+    DiskFreeSpaceGb      = 51,  // Number: free space in gigabytes
 }

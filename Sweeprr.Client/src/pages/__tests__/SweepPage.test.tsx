@@ -48,6 +48,7 @@ describe('SweepPage Component', () => {
       libraryPercentCap: 50.0,
       overBroadMatchPct: 80.0,
       defaultCron: '0 3 * * *',
+      allowDirectJellyfinDeletion: false,
     })
     vi.mocked(sweepApi.getSummary).mockResolvedValue({
       pendingCount: 2,

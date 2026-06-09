@@ -91,6 +91,18 @@ public sealed class SettingsController : ControllerBase
             s.OverBroadMatchPct = req.OverBroadMatchPct.Value;
         }
 
+        if (req.AllowDirectJellyfinDeletion.HasValue)
+            s.AllowDirectJellyfinDeletion = req.AllowDirectJellyfinDeletion.Value;
+
+        if (req.LeavingSoonSyncEnabled.HasValue)
+            s.LeavingSoonSyncEnabled = req.LeavingSoonSyncEnabled.Value;
+
+        if (req.PosterOverlaysEnabled.HasValue)
+            s.PosterOverlaysEnabled = req.PosterOverlaysEnabled.Value;
+
+        if (req.PosterBackupDir is not null)
+            s.PosterBackupDir = req.PosterBackupDir;
+
         await _db.SaveChangesAsync(ct);
         return Ok(ToDto(s));
     }
@@ -103,7 +115,11 @@ public sealed class SettingsController : ControllerBase
         s.MaxGbPerRun,
         s.PessimisticSizeGb,
         s.LibraryPercentCap,
-        s.OverBroadMatchPct);
+        s.OverBroadMatchPct,
+        s.AllowDirectJellyfinDeletion,
+        s.LeavingSoonSyncEnabled,
+        s.PosterOverlaysEnabled,
+        s.PosterBackupDir);
 
     private static bool IsValidCron(string expression)
     {

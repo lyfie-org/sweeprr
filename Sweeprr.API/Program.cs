@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
@@ -77,6 +78,7 @@ builder.Services.AddSweeprrDataProtection(builder.Configuration);
 builder.Services.AddSweeprrDatabase(builder.Configuration);
 builder.Services.AddSweeprrAuth();
 
+builder.Services.AddScoped<IOverlayRenderingService, OverlayRenderingService>();
 builder.Services.AddScoped<ISweepQueueService, SweepQueueService>();
 builder.Services.AddScoped<IMediaPopulationService, MediaPopulationService>();
 builder.Services.AddScoped<IFailsafeService, FailsafeService>();
@@ -105,6 +107,16 @@ builder.Services.AddSingleton<IPlaystateCache, PlaystateCache>();
 builder.Services.AddSingleton<IPlaybackActivityWriter, PlaybackActivityWriter>();
 builder.Services.AddHostedService<PlaybackPruningWorker>();
 builder.Services.AddHostedService<ExpiredExclusionCleanupWorker>();
+
+// Channel used to signal JellyfinCurationWarningSyncService when the sweep queue changes.
+// Bounded(1) + DropOldest: multiple rapid writes collapse to a single sync run.
+builder.Services.AddSingleton(Channel.CreateBounded<byte>(new BoundedChannelOptions(1)
+{
+    FullMode     = BoundedChannelFullMode.DropOldest,
+    SingleReader = true,
+    SingleWriter = false
+}));
+builder.Services.AddHostedService<JellyfinCurationWarningSyncService>();
 
 // Jellyfin WebSocket service — register the concrete type as a singleton first so
 // that AddHostedService and IJellyfinWebSocketStatus both resolve the same instance.

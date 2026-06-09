@@ -10,6 +10,7 @@ import { ConnectionsPage } from './pages/ConnectionsPage'
 import { ExclusionsPage } from './pages/ExclusionsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LogsPage } from './pages/LogsPage'
+import { SandboxPage } from './pages/SandboxPage'
 import { KitchenSink } from './pages/KitchenSink'
 import './styles/app.css'
 
@@ -33,6 +34,7 @@ const router = createBrowserRouter([
           { path: 'exclusions',    element: <ExclusionsPage />  },
           { path: 'settings',      element: <SettingsPage />    },
           { path: 'logs',          element: <LogsPage />        },
+          { path: 'sandbox',       element: <SandboxPage />     },
         ],
       },
     ],

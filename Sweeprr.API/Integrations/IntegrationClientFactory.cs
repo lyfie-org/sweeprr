@@ -1,3 +1,4 @@
+using Sweeprr.API.Integrations.Bazarr;
 using Sweeprr.API.Integrations.Jellyfin;
 using Sweeprr.API.Integrations.Radarr;
 using Sweeprr.API.Integrations.Sonarr;
@@ -81,6 +82,22 @@ public sealed class IntegrationClientFactory : IIntegrationClientFactory
             conn.BaseUrl,
             apiKey,
             _loggerFactory.CreateLogger<SonarrClient>());
+    }
+
+    public async Task<BazarrClient?> CreateBazarrClientAsync(CancellationToken ct = default)
+    {
+        var all = await _connections.GetAllAsync();
+        var conn = all.FirstOrDefault(c => c.Type == ConnectionType.Bazarr && c.IsEnabled);
+        if (conn is null) return null;
+
+        var apiKey = await _connections.GetDecryptedKeyAsync(conn.Id);
+        if (apiKey is null) return null;
+
+        return new BazarrClient(
+            CreateHttpClient("Bazarr", conn.AllowInsecure),
+            conn.BaseUrl,
+            apiKey,
+            _loggerFactory.CreateLogger<BazarrClient>());
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────

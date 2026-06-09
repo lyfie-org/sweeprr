@@ -2,7 +2,7 @@ namespace Sweeprr.API.Models;
 
 public enum UserRole { Admin }
 
-public enum ConnectionType { Jellyfin, Radarr, Sonarr }
+public enum ConnectionType { Jellyfin, Radarr, Sonarr, Bazarr }
 
 public enum MediaType { Movie, Series, Season, Episode }
 

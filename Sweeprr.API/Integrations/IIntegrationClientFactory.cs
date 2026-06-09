@@ -1,3 +1,4 @@
+using Sweeprr.API.Integrations.Bazarr;
 using Sweeprr.API.Integrations.Jellyfin;
 using Sweeprr.API.Integrations.Radarr;
 using Sweeprr.API.Integrations.Sonarr;
@@ -34,4 +35,10 @@ public interface IIntegrationClientFactory
     /// </summary>
     Task<SonarrClient?> CreateSonarrClientAsync(
         int connectionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns a <see cref="BazarrClient"/> for the first enabled Bazarr connection,
+    /// or <c>null</c> when no Bazarr connection is configured or enabled.
+    /// </summary>
+    Task<BazarrClient?> CreateBazarrClientAsync(CancellationToken ct = default);
 }

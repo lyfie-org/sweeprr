@@ -4,6 +4,7 @@ import {
   CheckCircle,
   Sun,
   Moon,
+  Skull,
 } from '@phosphor-icons/react'
 import { settingsApi, type SettingsDto, type UpdateSettingsRequest } from '../api/settings'
 import { systemApi } from '../api/system'
@@ -59,6 +60,10 @@ interface FormState {
   libCapPct: string       // 0–100 (converted to 0–1 for the API)
   overBroadEnabled: boolean
   overBroadPct: string    // 0–100
+  allowDirectJellyfinDeletion: boolean
+  leavingSoonSyncEnabled: boolean
+  posterOverlaysEnabled: boolean
+  posterBackupDir: string
 }
 
 function settingsToForm(s: SettingsDto): FormState {
@@ -77,6 +82,10 @@ function settingsToForm(s: SettingsDto): FormState {
     overBroadPct: s.overBroadMatchPct !== null
       ? (s.overBroadMatchPct * 100).toFixed(1)
       : '30',
+    allowDirectJellyfinDeletion: s.allowDirectJellyfinDeletion,
+    leavingSoonSyncEnabled: s.leavingSoonSyncEnabled,
+    posterOverlaysEnabled: s.posterOverlaysEnabled,
+    posterBackupDir: s.posterBackupDir,
   }
 }
 
@@ -107,6 +116,7 @@ export function SettingsPage() {
   const [cronError, setCronError] = useState<string | null>(null)
   const [theme, setTheme] = useState<'light' | 'dark'>(getStoredTheme)
   const [version, setVersion] = useState<string>('')
+  const [showDirectDeleteConfirm, setShowDirectDeleteConfirm] = useState(false)
 
   useEffect(() => {
     systemApi.getInfo()
@@ -174,6 +184,10 @@ export function SettingsPage() {
       maxItemsPerRun: maxItems,
       maxGbPerRun: maxGb,
       pessimisticSizeGb: pessGb,
+      allowDirectJellyfinDeletion: form.allowDirectJellyfinDeletion,
+      leavingSoonSyncEnabled: form.leavingSoonSyncEnabled,
+      posterOverlaysEnabled: form.posterOverlaysEnabled,
+      posterBackupDir: form.posterBackupDir.trim() || '/config/poster-backups',
     }
 
     if (form.libCapEnabled) {
@@ -434,6 +448,134 @@ export function SettingsPage() {
                     Sweep Queue, but will not delete anything or modify Radarr/Sonarr until you
                     turn this off.
                   </span>
+                </div>
+              )}
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* ── Advanced / Direct Jellyfin Deletion ── */}
+        <Card className="settings-danger-card">
+          <CardBody>
+            <div className="settings-danger-header">
+              <Skull size={18} weight="fill" className="settings-danger-header__icon" />
+              <p className="settings-section__label" style={{ margin: 0 }}>Advanced</p>
+            </div>
+            <div className="settings-section__fields">
+              <Toggle
+                checked={form.allowDirectJellyfinDeletion}
+                onChange={v => {
+                  if (v) {
+                    // Enabling: require explicit confirmation before flipping the toggle.
+                    setShowDirectDeleteConfirm(true)
+                  } else {
+                    setF('allowDirectJellyfinDeletion', false)
+                  }
+                }}
+                label="Allow direct Jellyfin deletion"
+                description="When enabled, items with no matching Radarr/Sonarr record are deleted directly via the Jellyfin API."
+                disabled={saving}
+              />
+              {form.allowDirectJellyfinDeletion && (
+                <div className="settings-danger__warning">
+                  <Warning size={15} weight="fill" />
+                  <span>
+                    Direct Jellyfin deletion bypasses Radarr/Sonarr entirely. Files are
+                    permanently deleted and <strong>cannot be re-downloaded automatically</strong>.
+                    Ensure this is intentional before saving.
+                  </span>
+                </div>
+              )}
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* ── Direct-delete confirmation modal ── */}
+        {showDirectDeleteConfirm && (
+          <div
+            className="settings-modal-backdrop"
+            onClick={() => setShowDirectDeleteConfirm(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="direct-delete-modal-title"
+          >
+            <div
+              className="settings-modal"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="settings-modal__icon">
+                <Skull size={32} weight="fill" />
+              </div>
+              <h2 id="direct-delete-modal-title" className="settings-modal__title">
+                Enable Direct Jellyfin Deletion?
+              </h2>
+              <p className="settings-modal__body">
+                This setting allows Sweeprr to permanently delete files from Jellyfin
+                without going through Radarr or Sonarr. Those files will{' '}
+                <strong>not be re-downloaded automatically</strong>. This action
+                cannot be undone.
+              </p>
+              <p className="settings-modal__body">
+                Only enable this if you intentionally want to remove media that has
+                no corresponding entry in your *arr instances.
+              </p>
+              <div className="settings-modal__actions">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowDirectDeleteConfirm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    setF('allowDirectJellyfinDeletion', true)
+                    setShowDirectDeleteConfirm(false)
+                  }}
+                >
+                  I understand, enable it
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Jellyfin Integration ── */}
+        <Card>
+          <CardBody>
+            <p className="settings-section__label">Jellyfin Integration</p>
+            <div className="settings-section__fields">
+              <Toggle
+                checked={form.leavingSoonSyncEnabled}
+                onChange={v => setF('leavingSoonSyncEnabled', v)}
+                label="Leaving Soon collection sync"
+                description="Automatically keep a Jellyfin BoxSet collection called &quot;Sweeprr - Leaving Soon&quot; in sync with your Sweep Queue. Jellyfin users will see this collection populated with media that is pending removal."
+                disabled={saving}
+              />
+
+              <Toggle
+                checked={form.posterOverlaysEnabled}
+                onChange={v => setF('posterOverlaysEnabled', v)}
+                label="Poster overlays"
+                description="Apply a &quot;Leaving Soon&quot; banner to Jellyfin posters when items enter the Sweep Queue. Originals are backed up and automatically restored when items are removed from the queue."
+                disabled={saving}
+              />
+
+              {form.posterOverlaysEnabled && (
+                <div className="settings-overlay__dir">
+                  <Input
+                    label="Poster backup directory"
+                    value={form.posterBackupDir}
+                    onChange={e => setF('posterBackupDir', e.target.value)}
+                    placeholder="/config/poster-backups"
+                    disabled={saving}
+                    helper="Original posters are saved here before modification. Must be writable by the Sweeprr process."
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  />
+                  <div className="settings-overlay__note">
+                    <Warning size={14} weight="fill" />
+                    <span>Overlays permanently modify Jellyfin poster images until the item leaves the queue.</span>
+                  </div>
                 </div>
               )}
             </div>

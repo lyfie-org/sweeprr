@@ -4,9 +4,10 @@ export const CONNECTION_TYPE_LABELS = {
   0: 'Jellyfin',
   1: 'Radarr',
   2: 'Sonarr',
+  3: 'Bazarr',
 } as const
 
-export type ConnectionType = 0 | 1 | 2
+export type ConnectionType = 0 | 1 | 2 | 3
 
 export interface ConnectionResponse {
   id: number
@@ -53,6 +54,12 @@ export interface TagDto {
   label: string
 }
 
+export interface DiskSpaceDto {
+  freeSpaceGb: number
+  totalSpaceGb: number
+  freePercent: number
+}
+
 export const connectionsApi = {
   getAll: () =>
     api.get<ConnectionResponse[]>('/api/connections'),
@@ -87,4 +94,7 @@ export const connectionsApi = {
 
   getTags: (connectionId: number) =>
     api.get<TagDto[]>(`/api/connections/${connectionId}/tags`),
+
+  getDiskSpace: (connectionId: number) =>
+    api.get<DiskSpaceDto>(`/api/connections/${connectionId}/diskspace`),
 }

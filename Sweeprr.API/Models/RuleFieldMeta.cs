@@ -29,6 +29,9 @@ public static class RuleFieldMeta
     private static readonly IReadOnlySet<MediaType> MovieEpisodeTypes = MSet(
         MediaType.Movie, MediaType.Episode);
 
+    private static readonly IReadOnlySet<MediaType> MovieSeriesTypes = MSet(
+        MediaType.Movie, MediaType.Series);
+
     // ── Comparator groups ────────────────────────────────────────────────────
 
     private static readonly IReadOnlySet<RuleComparator> NumericComparators = CSet(
@@ -84,6 +87,13 @@ public static class RuleFieldMeta
         [RuleField.SeriesEnded]       = new(RuleValueType.Bool,     TvMediaTypes,       BoolComparators),
         [RuleField.IsFinale]          = new(RuleValueType.Bool,     SeasonEpisodeTypes, BoolComparators),
         [RuleField.CutoffMet]         = new(RuleValueType.Bool,     MovieEpisodeTypes,  BoolComparators),
+
+        // Multi-instance
+        [RuleField.HasComplementaryCopy] = new(RuleValueType.Bool,  MovieSeriesTypes,   BoolComparators),
+
+        // Disk space
+        [RuleField.DiskFreeSpacePercent] = new(RuleValueType.Number, AllMediaTypes, NumericComparators),
+        [RuleField.DiskFreeSpaceGb]      = new(RuleValueType.Number, AllMediaTypes, NumericComparators),
     };
 
     // ── Comparator → expected ValueType ─────────────────────────────────────

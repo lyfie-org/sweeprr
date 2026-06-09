@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Data;
 using Sweeprr.API.Dtos.Sweep;
@@ -7,11 +8,18 @@ namespace Sweeprr.API.Services;
 
 public sealed class SweepQueueService : ISweepQueueService
 {
-    private readonly SweeprrDbContext _db;
+    private readonly SweeprrDbContext        _db;
+    private readonly ChannelWriter<byte>     _syncTrigger;
+    private readonly IOverlayRenderingService _overlayService;
 
-    public SweepQueueService(SweeprrDbContext db)
+    public SweepQueueService(
+        SweeprrDbContext db,
+        Channel<byte> syncChannel,
+        IOverlayRenderingService overlayService)
     {
-        _db = db;
+        _db             = db;
+        _syncTrigger    = syncChannel.Writer;
+        _overlayService = overlayService;
     }
 
     public async Task<PagedResponse<SweepItemResponse>> QueryAsync(
@@ -85,6 +93,7 @@ public sealed class SweepQueueService : ISweepQueueService
 
         item.Status = SweepItemStatus.Approved;
         await _db.SaveChangesAsync(ct);
+        _syncTrigger.TryWrite(1);
 
         return ToResponse(item);
     }
@@ -121,6 +130,10 @@ public sealed class SweepQueueService : ISweepQueueService
         }
 
         await _db.SaveChangesAsync(ct);
+        _syncTrigger.TryWrite(1);
+
+        await _overlayService.RestoreOriginalAsync(item, ct);
+
         return ToResponse(item);
     }
 
@@ -160,6 +173,7 @@ public sealed class SweepQueueService : ISweepQueueService
         var tagExclusionSet = activeTagNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var upsertCount = 0;
+        var newItems    = new List<SweepItem>();
 
         foreach (var eval in matchedItems)
         {
@@ -194,7 +208,7 @@ public sealed class SweepQueueService : ISweepQueueService
             else
             {
                 // Create new Pending item
-                _db.SweepItems.Add(new SweepItem
+                var newItem = new SweepItem
                 {
                     RuleGroupId = ruleGroupId,
                     MediaServerItemId = eval.Item.ItemId,
@@ -215,7 +229,9 @@ public sealed class SweepQueueService : ISweepQueueService
                     ResolutionHeight = eval.Item.ResolutionHeight,
                     VideoCodec = eval.Item.VideoCodec,
                     AudioChannels = eval.Item.AudioChannels,
-                });
+                };
+                _db.SweepItems.Add(newItem);
+                newItems.Add(newItem);
                 upsertCount++;
             }
         }
@@ -229,6 +245,15 @@ public sealed class SweepQueueService : ISweepQueueService
             _db.SweepItems.RemoveRange(staleItems);
 
         await _db.SaveChangesAsync(ct);
+        _syncTrigger.TryWrite(1);
+
+        // Overlay operations run after DB save — overlay failure never blocks reconciliation
+        foreach (var stale in staleItems)
+            await _overlayService.RestoreOriginalAsync(stale, ct);
+
+        foreach (var created in newItems)
+            await _overlayService.ApplyOverlayAsync(created, "Leaving Soon", ct);
+
         return upsertCount;
     }
 

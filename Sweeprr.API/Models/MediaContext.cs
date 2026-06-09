@@ -45,6 +45,13 @@ public sealed class MediaContext
     public bool? IsFinale    { get; init; }
     public bool? CutoffMet   { get; init; }
 
+    // Multi-instance (Story 8.4) — null when only one instance configured or field not requested
+    public bool? HasComplementaryCopy { get; init; }
+
+    // Disk space (Story 9.3) — null when not requested or *arr unavailable
+    public double? DiskFreeSpacePercent { get; init; }
+    public double? DiskFreeSpaceGb      { get; init; }
+
     // Provider IDs (from Jellyfin — stored on SweepItem for execution-time *arr matching)
     public string? ImdbId { get; init; }
     public int? TmdbId { get; init; }

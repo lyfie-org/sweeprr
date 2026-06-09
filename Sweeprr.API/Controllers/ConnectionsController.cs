@@ -239,6 +239,66 @@ public class ConnectionsController : ControllerBase
         }
     }
 
+    // ── Disk space proxy (used by Rule Builder helper text for disk-space fields) ──
+
+    /// <summary>
+    /// Returns current disk-space stats from a Radarr or Sonarr connection.
+    /// Used by the rule builder to display helper text (e.g. "Current: 21% free").
+    /// </summary>
+    [HttpGet("{id:int}/diskspace")]
+    [ProducesResponseType(typeof(DiskSpaceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> GetDiskSpace(int id, CancellationToken ct)
+    {
+        var conn = await _db.ServerConnections
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
+
+        if (conn is null)
+            return NotFound(new { error = $"Connection {id} not found." });
+
+        if (conn.Type == ConnectionType.Jellyfin)
+            return BadRequest(new { error = "Disk space is only available for Radarr or Sonarr connections." });
+
+        if (conn.Type == ConnectionType.Radarr)
+        {
+            var client = await _clientFactory.CreateRadarrClientAsync(id, ct);
+            if (client is null)
+                return StatusCode(502, new { error = "Could not connect to Radarr — check connection settings." });
+
+            var result = await client.GetDiskSpaceAsync(ct);
+            if (result is not Integrations.HttpResult<(double FreePercent, double FreeGb)>.Success ok)
+                return StatusCode(502, new { error = "Failed to fetch disk space from Radarr." });
+
+            // Re-fetch total from client to build the response (sum of all paths)
+            var (freePercent, freeGb) = ok.Value;
+            var totalGb = freePercent > 0 ? freeGb / (freePercent / 100.0) : 0.0;
+            return Ok(new DiskSpaceResponse(
+                FreeSpaceGb: Math.Round(freeGb, 1),
+                TotalSpaceGb: Math.Round(totalGb, 1),
+                FreePercent: Math.Round(freePercent, 1)));
+        }
+        else // Sonarr
+        {
+            var client = await _clientFactory.CreateSonarrClientAsync(id, ct);
+            if (client is null)
+                return StatusCode(502, new { error = "Could not connect to Sonarr — check connection settings." });
+
+            var result = await client.GetDiskSpaceAsync(ct);
+            if (result is not Integrations.HttpResult<(double FreePercent, double FreeGb)>.Success ok)
+                return StatusCode(502, new { error = "Failed to fetch disk space from Sonarr." });
+
+            var (freePercent, freeGb) = ok.Value;
+            var totalGb = freePercent > 0 ? freeGb / (freePercent / 100.0) : 0.0;
+            return Ok(new DiskSpaceResponse(
+                FreeSpaceGb: Math.Round(freeGb, 1),
+                TotalSpaceGb: Math.Round(totalGb, 1),
+                FreePercent: Math.Round(freePercent, 1)));
+        }
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static bool TryValidateUrl(string raw, out string? error)

@@ -23,6 +23,8 @@
     <!-- Polly v8-based resilience pipeline for IHttpClientFactory (retry, timeout, circuit-breaker) -->
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.0.*" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.14.14" />
+    <PackageReference Include="SkiaSharp" Version="2.88.*" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="2.88.*" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
   </ItemGroup>
 

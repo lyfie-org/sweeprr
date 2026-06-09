@@ -30,10 +30,13 @@ public sealed class ValueResolver : IValueResolver
             RuleField.Tags              => LiftList(context.Tags,          context),
             RuleField.QualityProfile    => LiftString(context.QualityProfile, context),
             RuleField.FileSizeGb        => Lift(context.FileSizeGb,        context),
-            RuleField.SeriesEnded       => Lift(context.SeriesEnded,       context),
-            RuleField.IsFinale          => Lift(context.IsFinale,          context),
-            RuleField.CutoffMet         => Lift(context.CutoffMet,         context),
-            _                           => new ResolvedValue.Missing()
+            RuleField.SeriesEnded          => Lift(context.SeriesEnded,          context),
+            RuleField.IsFinale             => Lift(context.IsFinale,             context),
+            RuleField.CutoffMet            => Lift(context.CutoffMet,            context),
+            RuleField.HasComplementaryCopy => Lift(context.HasComplementaryCopy, context),
+            RuleField.DiskFreeSpacePercent => Lift(context.DiskFreeSpacePercent, context),
+            RuleField.DiskFreeSpaceGb      => Lift(context.DiskFreeSpaceGb,      context),
+            _                              => new ResolvedValue.Missing()
         };
     }
 
