@@ -231,6 +231,122 @@ public class SweepExecutorTests : IDisposable
         Assert.Equal(1, result.ItemsSkippedByFailsafe);
     }
 
+    // ── ChangeQualityProfile: profile updated + search triggered ─────────────
+
+    [Fact]
+    public async Task Execute_ChangeQualityProfile_UpdatesProfileAndTriggersSearch()
+    {
+        var handler = new RecordingHandler();
+        var (executor, db) = CreateExecutor(handler, globalDryRun: false);
+
+        var group = await SeedGroupAsync(db, SweepAction.ChangeQualityProfile, radarrConnId: 1,
+            targetProfileId: 4, targetProfileName: "HD-1080p");
+        await SeedApprovedMovieItemAsync(db, group.Id, "tmdb-438631", arrConnId: 1);
+
+        // Build index → GET /api/v3/movie
+        handler.Enqueue(HttpMethod.Get, "/api/v3/movie", 200, MovieListJson(438631));
+        // UpdateMovieQualityProfileAsync → GET /api/v3/movie/1 then PUT /api/v3/movie/1
+        handler.Enqueue(HttpMethod.Get, "/api/v3/movie/1", 200, SingleMovieJson(1, 438631));
+        handler.Enqueue(HttpMethod.Put, "/api/v3/movie/1", 200, "null");
+        // TriggerMovieSearchAsync → POST /api/v3/command
+        handler.Enqueue(HttpMethod.Post, "/api/v3/command", 200, "{}");
+
+        var result = await executor.ExecuteAsync(new ExecuteSweepRequest());
+
+        Assert.Equal(1, result.ItemsSwept);
+        Assert.Equal(0, result.ItemsFailed);
+
+        // PUT (profile update) then POST (search trigger) — no DELETE
+        var mutatingCalls = handler.Calls
+            .Where(c => c.Method == HttpMethod.Put || c.Method == HttpMethod.Post || c.Method == HttpMethod.Delete)
+            .ToList();
+        Assert.Equal(2, mutatingCalls.Count);
+        Assert.Equal(HttpMethod.Put, mutatingCalls[0].Method);
+        Assert.Contains("/api/v3/movie/1", mutatingCalls[0].Path);
+        Assert.Equal(HttpMethod.Post, mutatingCalls[1].Method);
+        Assert.Contains("/api/v3/command", mutatingCalls[1].Path);
+        Assert.DoesNotContain(handler.Calls, c => c.Method == HttpMethod.Delete);
+
+        var item = await db.SweepItems.FirstAsync();
+        Assert.Equal(SweepItemStatus.Swept, item.Status);
+    }
+
+    // ── ChangeQualityProfile: dry-run → no mutations ──────────────────────────
+
+    [Fact]
+    public async Task Execute_ChangeQualityProfile_DryRun_NoMutatingCalls()
+    {
+        var handler = new RecordingHandler();
+        var (executor, db) = CreateExecutor(handler, globalDryRun: true);
+
+        var group = await SeedGroupAsync(db, SweepAction.ChangeQualityProfile, radarrConnId: 1,
+            targetProfileId: 4, targetProfileName: "HD-1080p");
+        await SeedApprovedMovieItemAsync(db, group.Id, "tmdb-438631", arrConnId: 1);
+
+        handler.Enqueue(HttpMethod.Get, "/api/v3/movie", 200, MovieListJson(438631));
+
+        var result = await executor.ExecuteAsync(new ExecuteSweepRequest());
+
+        Assert.True(result.WasDryRun);
+        Assert.Equal(1, result.ItemsSwept);
+        Assert.DoesNotContain(handler.Calls, c => c.Method == HttpMethod.Put);
+        Assert.DoesNotContain(handler.Calls, c => c.Method == HttpMethod.Post);
+        Assert.DoesNotContain(handler.Calls, c => c.Method == HttpMethod.Delete);
+    }
+
+    // ── ChangeQualityProfile: no target profile → item Failed, no mutations ───
+
+    [Fact]
+    public async Task Execute_ChangeQualityProfile_NoTargetProfile_ItemFailed()
+    {
+        var handler = new RecordingHandler();
+        var (executor, db) = CreateExecutor(handler, globalDryRun: false);
+
+        var group = await SeedGroupAsync(db, SweepAction.ChangeQualityProfile, radarrConnId: 1,
+            targetProfileId: null);
+        var sweepItem = await SeedApprovedMovieItemAsync(db, group.Id, "tmdb-438631", arrConnId: 1);
+
+        handler.Enqueue(HttpMethod.Get, "/api/v3/movie", 200, MovieListJson(438631));
+
+        var result = await executor.ExecuteAsync(new ExecuteSweepRequest());
+
+        Assert.Equal(0, result.ItemsSwept);
+        Assert.Equal(1, result.ItemsFailed);
+        Assert.DoesNotContain(handler.Calls, c => c.Method == HttpMethod.Put);
+        Assert.DoesNotContain(handler.Calls, c => c.Method == HttpMethod.Post);
+
+        var item = await db.SweepItems.FindAsync(sweepItem.Id);
+        Assert.Equal(SweepItemStatus.Failed, item!.Status);
+        Assert.Contains("TargetQualityProfileId", item.SkippedReason);
+    }
+
+    // ── ChangeQualityProfile: search trigger fails → item still Swept ─────────
+
+    [Fact]
+    public async Task Execute_ChangeQualityProfile_SearchTriggerFails_ItemStillSwept()
+    {
+        var handler = new RecordingHandler();
+        var (executor, db) = CreateExecutor(handler, globalDryRun: false);
+
+        var group = await SeedGroupAsync(db, SweepAction.ChangeQualityProfile, radarrConnId: 1,
+            targetProfileId: 4, targetProfileName: "HD-1080p");
+        await SeedApprovedMovieItemAsync(db, group.Id, "tmdb-438631", arrConnId: 1);
+
+        handler.Enqueue(HttpMethod.Get, "/api/v3/movie", 200, MovieListJson(438631));
+        handler.Enqueue(HttpMethod.Get, "/api/v3/movie/1", 200, SingleMovieJson(1, 438631));
+        handler.Enqueue(HttpMethod.Put, "/api/v3/movie/1", 200, "null");
+        handler.Enqueue(HttpMethod.Post, "/api/v3/command", 500, "\"Internal Server Error\"");
+
+        var result = await executor.ExecuteAsync(new ExecuteSweepRequest());
+
+        // Profile was changed; search failure is non-fatal
+        Assert.Equal(1, result.ItemsSwept);
+        Assert.Equal(0, result.ItemsFailed);
+
+        var item = await db.SweepItems.FirstAsync();
+        Assert.Equal(SweepItemStatus.Swept, item.Status);
+    }
+
     // ── No connection found ──────────────────────────────────────────────────
 
     [Fact]
@@ -316,7 +432,9 @@ public class SweepExecutorTests : IDisposable
     private static async Task<RuleGroup> SeedGroupAsync(
         SweeprrDbContext db,
         SweepAction action,
-        int? radarrConnId = 1)
+        int? radarrConnId = 1,
+        int? targetProfileId = null,
+        string? targetProfileName = null)
     {
         var group = new RuleGroup
         {
@@ -324,6 +442,8 @@ public class SweepExecutorTests : IDisposable
             MediaType = MediaType.Movie,
             Action = action,
             IsEnabled = true,
+            TargetQualityProfileId = targetProfileId,
+            TargetQualityProfileName = targetProfileName,
         };
         db.RuleGroups.Add(group);
         await db.SaveChangesAsync();

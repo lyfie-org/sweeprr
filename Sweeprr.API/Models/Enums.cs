@@ -12,7 +12,8 @@ public enum SweepAction
     UnmonitorOnly,
     DeleteOnly,
     DeleteSeriesIfEmpty,
-    UnmonitorSeasonIfEmpty
+    UnmonitorSeasonIfEmpty,
+    ChangeQualityProfile = 6,
 }
 
 public enum LogicalOperator { And, Or }

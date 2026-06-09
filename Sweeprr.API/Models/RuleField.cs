@@ -19,10 +19,17 @@ public enum RuleField
     Rating            = 12,
     Genre             = 13,
     ResolutionHeight  = 14,
+    VideoCodec        = 15,   // Text: Equals/NotEquals/Contains — e.g. "hevc", "h264"
+    AudioChannels     = 16,   // Number: Equals/GreaterThan/LessThan — e.g. 6 = 5.1
 
     // *arr
     Monitored         = 20,
     Tags              = 21,
     QualityProfile    = 22,
     FileSizeGb        = 23,
+
+    // TV-specific (Sonarr)
+    SeriesEnded       = 30,  // Bool: series status = "ended" in Sonarr
+    IsFinale          = 31,  // Bool: season has a finale episode (finaleType != null, Sonarr v4+)
+    CutoffMet         = 32,  // Bool: file quality meets the profile cutoff
 }

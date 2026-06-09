@@ -43,6 +43,16 @@ export interface ConnectionTestResult {
   errorMessage: string | null
 }
 
+export interface QualityProfileDto {
+  id: number
+  name: string
+}
+
+export interface TagDto {
+  id: number
+  label: string
+}
+
 export const connectionsApi = {
   getAll: () =>
     api.get<ConnectionResponse[]>('/api/connections'),
@@ -71,4 +81,10 @@ export const connectionsApi = {
       apiKey,
       allowInsecure,
     }),
+
+  getQualityProfiles: (connectionId: number) =>
+    api.get<QualityProfileDto[]>(`/api/connections/${connectionId}/qualityprofiles`),
+
+  getTags: (connectionId: number) =>
+    api.get<TagDto[]>(`/api/connections/${connectionId}/tags`),
 }

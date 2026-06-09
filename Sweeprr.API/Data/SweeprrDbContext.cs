@@ -13,6 +13,8 @@ public class SweeprrDbContext(DbContextOptions<SweeprrDbContext> options) : DbCo
     public DbSet<SweepItem> SweepItems => Set<SweepItem>();
     public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
     public DbSet<Exclusion> Exclusions => Set<Exclusion>();
+    public DbSet<TagExclusion> TagExclusions => Set<TagExclusion>();
+    public DbSet<PlaybackActivity> PlaybackActivities => Set<PlaybackActivity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -64,8 +66,42 @@ public class SweeprrDbContext(DbContextOptions<SweeprrDbContext> options) : DbCo
             .IsUnique()
             .HasDatabaseName("IX_Users_Username");
 
-        modelBuilder.Entity<Exclusion>()
-            .HasIndex(e => e.MediaServerItemId)
-            .HasDatabaseName("IX_Exclusions_MediaServerItemId");
+        modelBuilder.Entity<Exclusion>(e =>
+        {
+            e.HasIndex(x => x.MediaServerItemId)
+                .HasDatabaseName("IX_Exclusions_MediaServerItemId");
+
+            // Scoped exclusion FK — SET NULL when rule group deleted (keep the exclusion as global)
+            e.HasOne(x => x.RuleGroup)
+                .WithMany()
+                .HasForeignKey(x => x.RuleGroupId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<TagExclusion>(e =>
+        {
+            e.HasIndex(x => x.ServerConnectionId)
+                .HasDatabaseName("IX_TagExclusions_ServerConnectionId");
+
+            e.HasOne(x => x.ServerConnection)
+                .WithMany()
+                .HasForeignKey(x => x.ServerConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.RuleGroup)
+                .WithMany()
+                .HasForeignKey(x => x.RuleGroupId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PlaybackActivity>(e =>
+        {
+            e.HasIndex(p => new { p.MediaServerItemId, p.UserId })
+                .HasDatabaseName("IX_PlaybackActivities_MediaServerItemId_UserId");
+            e.HasIndex(p => p.LastWatched)
+                .HasDatabaseName("IX_PlaybackActivities_LastWatched");
+        });
     }
 }

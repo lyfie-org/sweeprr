@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Sweeprr.API.Integrations.Jellyfin.Dto;
 using Sweeprr.API.Integrations.Jellyfin.Models;
 
@@ -65,6 +67,19 @@ public sealed class JellyfinClient : ClientBase
     {
         var result = await GetAsync<JellyfinSystemInfoDto>("/System/Info", ct);
         return result.Map(JellyfinSystemInfo.From);
+    }
+
+    // ── Genres ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns all available genres from the Jellyfin server.
+    /// </summary>
+    public async Task<HttpResult<IReadOnlyList<string>>> GetGenresAsync(
+        CancellationToken ct = default)
+    {
+        var result = await GetAsync<JellyfinGenresResponseDto>("/Genres", ct);
+        return result.Map(dto =>
+            (IReadOnlyList<string>)dto.Items.Select(g => g.Name).ToList());
     }
 
     // ── Library enumeration ──────────────────────────────────────────────────

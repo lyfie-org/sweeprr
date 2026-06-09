@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Data;
+using Sweeprr.API.Integrations.Jellyfin.WebSocket;
 using Sweeprr.API.Models;
 
 namespace Sweeprr.API.Configuration;
@@ -62,6 +63,53 @@ public static class DatabaseExtensions
                 ex.Message);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Restores PlaybackActivity rows from SQLite into the in-memory PlaystateCache.
+    /// Paginates in batches of 500 to avoid large single queries on big libraries.
+    /// Must be called AFTER MigrateAndSeedAsync.
+    /// </summary>
+    public static async Task BackfillPlaystateCacheAsync(this IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var db     = scope.ServiceProvider.GetRequiredService<SweeprrDbContext>();
+        var cache  = scope.ServiceProvider.GetRequiredService<IPlaystateCache>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<SweeprrDbContext>>();
+
+        const int pageSize = 500;
+        int page  = 0;
+        int total = 0;
+
+        while (true)
+        {
+            var batch = await db.PlaybackActivities
+                .AsNoTracking()
+                .OrderBy(p => p.Id)
+                .Skip(page * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            if (batch.Count == 0) break;
+
+            foreach (var a in batch)
+            {
+                cache.Upsert(a.MediaServerItemId, a.UserId,
+                    new Integrations.Jellyfin.Models.JellyfinUserData(
+                        Played:                a.IsFinished,
+                        PlayCount:             a.PlayCount,
+                        LastPlayedDate:        a.LastWatched == default ? null
+                                                   : new DateTimeOffset(a.LastWatched, TimeSpan.Zero),
+                        PlaybackPositionTicks: a.PlaybackPositionTicks));
+            }
+
+            total += batch.Count;
+            page++;
+
+            if (batch.Count < pageSize) break;
+        }
+
+        logger.LogInformation("Boot backfill: restored {Count} playback activity record(s) into PlaystateCache", total);
     }
 
     private static string GenerateSecret()

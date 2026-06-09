@@ -106,7 +106,8 @@ public sealed class SweepQueueService : ISweepQueueService
         if (createExclusion)
         {
             var alreadyExcluded = await _db.Exclusions
-                .AnyAsync(e => e.MediaServerItemId == item.MediaServerItemId, ct);
+                .AnyAsync(e => e.MediaServerItemId == item.MediaServerItemId
+                            && (e.ExpiresAt == null || e.ExpiresAt > DateTime.UtcNow), ct);
 
             if (!alreadyExcluded)
             {
@@ -141,18 +142,33 @@ public sealed class SweepQueueService : ISweepQueueService
         var existingByItemId = existingPending
             .ToDictionary(s => s.MediaServerItemId, StringComparer.OrdinalIgnoreCase);
 
-        // Load excluded item IDs to skip them
+        var now = DateTime.UtcNow;
+
+        // Load non-expired excluded item IDs (global or scoped to this rule group)
         var excludedItemIds = await _db.Exclusions
+            .Where(e => (e.RuleGroupId == null || e.RuleGroupId == ruleGroupId)
+                     && (e.ExpiresAt == null || e.ExpiresAt > now))
             .Select(e => e.MediaServerItemId)
             .ToListAsync(ct);
         var excludedSet = excludedItemIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Load active tag exclusions (global + scoped to this rule group)
+        var activeTagNames = await _db.TagExclusions
+            .Where(t => t.RuleGroupId == null || t.RuleGroupId == ruleGroupId)
+            .Select(t => t.TagName)
+            .ToListAsync(ct);
+        var tagExclusionSet = activeTagNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var upsertCount = 0;
 
         foreach (var eval in matchedItems)
         {
-            // Skip permanently excluded items
+            // Skip excluded items
             if (excludedSet.Contains(eval.Item.ItemId))
+                continue;
+
+            // Skip items whose *arr tags match a tag exclusion
+            if (tagExclusionSet.Count > 0 && eval.Item.Tags?.Any(t => tagExclusionSet.Contains(t)) == true)
                 continue;
 
             if (existingByItemId.TryGetValue(eval.Item.ItemId, out var existing))
@@ -169,6 +185,10 @@ public sealed class SweepQueueService : ISweepQueueService
                 existing.ImdbId = eval.Item.ImdbId;
                 existing.ArrInstanceId = eval.Item.ArrConnectionId;
                 existing.SeasonNumber = eval.Item.SeasonNumber;
+                existing.Genres = eval.Item.Genres != null ? string.Join(",", eval.Item.Genres) : null;
+                existing.ResolutionHeight = eval.Item.ResolutionHeight;
+                existing.VideoCodec = eval.Item.VideoCodec;
+                existing.AudioChannels = eval.Item.AudioChannels;
                 upsertCount++;
             }
             else
@@ -191,6 +211,10 @@ public sealed class SweepQueueService : ISweepQueueService
                     ImdbId = eval.Item.ImdbId,
                     ArrInstanceId = eval.Item.ArrConnectionId,
                     SeasonNumber = eval.Item.SeasonNumber,
+                    Genres = eval.Item.Genres != null ? string.Join(",", eval.Item.Genres) : null,
+                    ResolutionHeight = eval.Item.ResolutionHeight,
+                    VideoCodec = eval.Item.VideoCodec,
+                    AudioChannels = eval.Item.AudioChannels,
                 });
                 upsertCount++;
             }
@@ -241,5 +265,9 @@ public sealed class SweepQueueService : ISweepQueueService
         s.ImdbId,
         s.FlaggedAt,
         s.SweptAt,
-        s.SkippedReason);
+        s.SkippedReason,
+        s.Genres?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        s.ResolutionHeight,
+        s.VideoCodec,
+        s.AudioChannels);
 }

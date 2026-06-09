@@ -137,6 +137,32 @@ public sealed class RuleGroupsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Fetches genres from the active Jellyfin connection.
+    /// </summary>
+    [HttpGet("genres")]
+    [ProducesResponseType(typeof(GenresResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> GetGenres(CancellationToken ct)
+    {
+        var conn = await _db.ServerConnections
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Type == ConnectionType.Jellyfin && c.IsEnabled, ct);
+
+        if (conn is null)
+            return Ok(new GenresResponse(Array.Empty<string>()));
+
+        var client = await _clientFactory.CreateJellyfinClientAsync(conn.Id, ct);
+        if (client is null)
+            return StatusCode(502, new { error = "Could not connect to Jellyfin — check connection settings." });
+
+        var result = await client.GetGenresAsync(ct);
+        if (result is not Integrations.HttpResult<IReadOnlyList<string>>.Success ok)
+            return StatusCode(502, new { error = "Failed to fetch genres from Jellyfin." });
+
+        return Ok(new GenresResponse(ok.Value));
+    }
+
     // ── Preview (live match-count for Rule Builder chip) ───────────────────────
 
     /// <summary>
@@ -224,6 +250,8 @@ public sealed class RuleGroupsController : ControllerBase
             IsEnabled   = request.IsEnabled,
             CronOverride = cron,
             Action      = request.Action,
+            TargetQualityProfileId   = request.TargetQualityProfileId,
+            TargetQualityProfileName = request.TargetQualityProfileName?.Trim(),
             CreatedAt   = DateTime.UtcNow,
             UpdatedAt   = DateTime.UtcNow,
             Rules       = MapConditions(request.Conditions),
@@ -265,6 +293,8 @@ public sealed class RuleGroupsController : ControllerBase
         group.IsEnabled   = request.IsEnabled;
         group.CronOverride = cron;
         group.Action      = request.Action;
+        group.TargetQualityProfileId   = request.TargetQualityProfileId;
+        group.TargetQualityProfileName = request.TargetQualityProfileName?.Trim();
         group.UpdatedAt   = DateTime.UtcNow;
 
         // Replace all conditions — cascade delete handles orphaned rules
@@ -366,6 +396,8 @@ public sealed class RuleGroupsController : ControllerBase
         IsEnabled:   g.IsEnabled,
         CronOverride: g.CronOverride,
         Action:      g.Action,
+        TargetQualityProfileId:   g.TargetQualityProfileId,
+        TargetQualityProfileName: g.TargetQualityProfileName,
         CreatedAt:   g.CreatedAt,
         UpdatedAt:   g.UpdatedAt,
         Conditions:  g.Rules
@@ -397,6 +429,8 @@ public sealed class RuleGroupsController : ControllerBase
         RuleField.Rating            => "Rating",
         RuleField.Genre             => "Genre",
         RuleField.ResolutionHeight  => "Resolution (Height)",
+        RuleField.VideoCodec        => "Video Codec",
+        RuleField.AudioChannels     => "Audio Channels",
         RuleField.Monitored         => "Monitored",
         RuleField.Tags              => "Tags",
         RuleField.QualityProfile    => "Quality Profile",

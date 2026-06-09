@@ -7,6 +7,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { SweepPage } from './pages/SweepPage'
 import { RulesPage } from './pages/RulesPage'
 import { ConnectionsPage } from './pages/ConnectionsPage'
+import { ExclusionsPage } from './pages/ExclusionsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LogsPage } from './pages/LogsPage'
 import { KitchenSink } from './pages/KitchenSink'
@@ -29,6 +30,7 @@ const router = createBrowserRouter([
           { path: 'sweep',         element: <SweepPage />       },
           { path: 'rules',         element: <RulesPage />       },
           { path: 'connections',   element: <ConnectionsPage /> },
+          { path: 'exclusions',    element: <ExclusionsPage />  },
           { path: 'settings',      element: <SettingsPage />    },
           { path: 'logs',          element: <LogsPage />        },
         ],

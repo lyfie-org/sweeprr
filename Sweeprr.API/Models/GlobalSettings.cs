@@ -12,4 +12,9 @@ public class GlobalSettings
     public double? OverBroadMatchPct { get; set; }
     public bool GlobalDryRun { get; set; } = true;
     public string DefaultCron { get; set; } = "0 3 * * *";
+    /// <summary>
+    /// Number of days to retain playback activity records. Default 365.
+    /// Records whose UpdatedAt is older than this threshold are pruned daily.
+    /// </summary>
+    public int PlaybackHistoryRetentionDays { get; set; } = 365;
 }

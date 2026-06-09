@@ -10,4 +10,5 @@ public sealed record SonarrEpisode(
     bool            HasFile,
     bool            Monitored,
     DateTimeOffset? AirDate,
-    string?         Title);
+    string?         Title,
+    string?         FinaleType);   // "series" | "season" | null (Sonarr v4+ only)

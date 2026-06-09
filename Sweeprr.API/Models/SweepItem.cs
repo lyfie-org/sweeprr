@@ -18,6 +18,10 @@ public class SweepItem
     public DateTime? SweptAt { get; set; }
     public string? SkippedReason { get; set; }
     public int? SeasonNumber { get; set; }
+    public string? Genres { get; set; }
+    public int? ResolutionHeight { get; set; }
+    public string? VideoCodec { get; set; }
+    public int? AudioChannels { get; set; }
 
     public RuleGroup RuleGroup { get; set; } = null!;
 }

@@ -9,6 +9,7 @@ export type SweepAction =
   | 'DeleteOnly'
   | 'DeleteSeriesIfEmpty'
   | 'UnmonitorSeasonIfEmpty'
+  | 'ChangeQualityProfile'
 export type LogicalOperator = 'And' | 'Or'
 export type RuleValueType = 'Number' | 'Date' | 'Text' | 'Bool' | 'RelativeDays' | 'TextList'
 export type RuleComparator =
@@ -46,6 +47,8 @@ export interface RuleGroupResponse {
   isEnabled: boolean
   cronOverride: string | null
   action: SweepAction
+  targetQualityProfileId: number | null
+  targetQualityProfileName: string | null
   createdAt: string
   updatedAt: string
   conditions: RuleConditionResponse[]
@@ -58,7 +61,14 @@ export interface RuleGroupRequest {
   isEnabled: boolean
   cronOverride?: string | null
   action: SweepAction
+  targetQualityProfileId?: number | null
+  targetQualityProfileName?: string | null
   conditions: RuleConditionDto[]
+}
+
+export interface QualityProfileDto {
+  id: number
+  name: string
 }
 
 export interface FieldDescriptor {
@@ -104,6 +114,9 @@ export const rulesApi = {
   getTags: (connectionId: number) =>
     api.get<{ tags: TagDto[] }>(`/api/rulegroups/tags?connectionId=${connectionId}`),
 
+  getGenres: () =>
+    api.get<{ genres: string[] }>('/api/rulegroups/genres'),
+
   create: (req: RuleGroupRequest) =>
     api.post<RuleGroupResponse>('/api/rulegroups', req),
 
@@ -137,6 +150,7 @@ export const ACTION_LABELS: Record<SweepAction, string> = {
   DeleteOnly: 'Delete Only',
   DeleteSeriesIfEmpty: 'Delete Series If Empty',
   UnmonitorSeasonIfEmpty: 'Unmonitor Season If Empty',
+  ChangeQualityProfile: 'Change Quality Profile',
 }
 
 export const COMPARATOR_LABELS: Record<RuleComparator, string> = {

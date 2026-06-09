@@ -228,9 +228,10 @@ public sealed class SweepExecutor : ISweepExecutor
 
         bool success = item.RuleGroup.Action switch
         {
-            SweepAction.UnmonitorOnly => await UnmonitorOnlyRadarrAsync(client, radarrMovieId, item, ct),
-            SweepAction.DeleteOnly    => await DeleteOnlyRadarrAsync(client, radarrMovieId, item, ct),
-            _                        => await DeleteAndUnmonitorRadarrAsync(client, radarrMovieId, item, ct),
+            SweepAction.UnmonitorOnly        => await UnmonitorOnlyRadarrAsync(client, radarrMovieId, item, ct),
+            SweepAction.DeleteOnly           => await DeleteOnlyRadarrAsync(client, radarrMovieId, item, ct),
+            SweepAction.ChangeQualityProfile => await ChangeQualityProfileRadarrAsync(client, radarrMovieId, item, ct),
+            _                               => await DeleteAndUnmonitorRadarrAsync(client, radarrMovieId, item, ct),
         };
 
         if (success)
@@ -401,6 +402,8 @@ public sealed class SweepExecutor : ISweepExecutor
                 seasonNumber.HasValue
                     ? await UnmonitorSeasonIfEmptyAsync(client, seriesId, seasonNumber.Value, item, ct)
                     : MarkFailed(item, "UnmonitorSeasonIfEmpty requires a season number"),
+            SweepAction.ChangeQualityProfile =>
+                await ChangeQualityProfileSonarrAsync(client, seriesId, item, ct),
             _ =>
                 await DeleteAndUnmonitorSonarrAsync(client, seriesId, seasonNumber, item, ct),
         };
@@ -582,6 +585,93 @@ public sealed class SweepExecutor : ISweepExecutor
                 item.Title);
             await client.UnmonitorSeriesAsync(seriesId, ct);
         }
+
+        return true;
+    }
+
+    // ── Quality profile downgrade ─────────────────────────────────────────────
+
+    private async Task<bool> ChangeQualityProfileRadarrAsync(
+        RadarrClient client, int movieId, SweepItem item, CancellationToken ct)
+    {
+        if (item.RuleGroup.TargetQualityProfileId is null)
+        {
+            _logger.LogWarning(
+                "ChangeQualityProfile: no target profile set on rule group '{Group}'. Skipping '{Title}'.",
+                item.RuleGroup.Name, item.Title);
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = "ChangeQualityProfile: TargetQualityProfileId not set on rule group";
+            return false;
+        }
+
+        var updateResult = await client.UpdateMovieQualityProfileAsync(
+            movieId, item.RuleGroup.TargetQualityProfileId.Value, ct);
+
+        if (updateResult is not HttpResult<EmptyResponse>.Success)
+        {
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = FailureReason(updateResult, "UpdateQualityProfile");
+            _logger.LogWarning("ChangeQualityProfile failed for '{Title}': {Reason}",
+                item.Title, item.SkippedReason);
+            return false;
+        }
+
+        var searchResult = await client.TriggerMovieSearchAsync(movieId, ct);
+        if (searchResult is not HttpResult<EmptyResponse>.Success)
+        {
+            // Profile was changed successfully — search trigger failure is non-fatal.
+            _logger.LogWarning(
+                "ChangeQualityProfile: profile updated for '{Title}' but search trigger failed: {Reason}",
+                item.Title, FailureReason(searchResult, "TriggerSearch"));
+        }
+
+        _logger.LogInformation(
+            "ChangeQualityProfile: updated Radarr movie '{Title}' to profile {ProfileId} ('{ProfileName}') and triggered search",
+            item.Title,
+            item.RuleGroup.TargetQualityProfileId.Value,
+            item.RuleGroup.TargetQualityProfileName ?? "unknown");
+
+        return true;
+    }
+
+    private async Task<bool> ChangeQualityProfileSonarrAsync(
+        SonarrClient client, int seriesId, SweepItem item, CancellationToken ct)
+    {
+        if (item.RuleGroup.TargetQualityProfileId is null)
+        {
+            _logger.LogWarning(
+                "ChangeQualityProfile: no target profile set on rule group '{Group}'. Skipping '{Title}'.",
+                item.RuleGroup.Name, item.Title);
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = "ChangeQualityProfile: TargetQualityProfileId not set on rule group";
+            return false;
+        }
+
+        var updateResult = await client.UpdateSeriesQualityProfileAsync(
+            seriesId, item.RuleGroup.TargetQualityProfileId.Value, ct);
+
+        if (updateResult is not HttpResult<EmptyResponse>.Success)
+        {
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = FailureReason(updateResult, "UpdateQualityProfile");
+            _logger.LogWarning("ChangeQualityProfile failed for '{Title}': {Reason}",
+                item.Title, item.SkippedReason);
+            return false;
+        }
+
+        var searchResult = await client.TriggerSeriesSearchAsync(seriesId, ct);
+        if (searchResult is not HttpResult<EmptyResponse>.Success)
+        {
+            _logger.LogWarning(
+                "ChangeQualityProfile: profile updated for '{Title}' but search trigger failed: {Reason}",
+                item.Title, FailureReason(searchResult, "TriggerSearch"));
+        }
+
+        _logger.LogInformation(
+            "ChangeQualityProfile: updated Sonarr series '{Title}' to profile {ProfileId} ('{ProfileName}') and triggered search",
+            item.Title,
+            item.RuleGroup.TargetQualityProfileId.Value,
+            item.RuleGroup.TargetQualityProfileName ?? "unknown");
 
         return true;
     }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
-  House, Broom, ListChecks, PlugsConnected, Gear, Article, SignOut,
+  House, Broom, ListChecks, PlugsConnected, Funnel, Gear, Article, SignOut,
 } from '@phosphor-icons/react'
 import { useAuth } from '../../context/AuthContext'
 import { RealtimePill } from './RealtimePill'
@@ -19,6 +19,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/sweep',       icon: <Broom size={20} weight="duotone" />,          label: 'Sweep Queue' },
   { to: '/rules',       icon: <ListChecks size={20} weight="duotone" />,     label: 'Rules'       },
   { to: '/connections', icon: <PlugsConnected size={20} weight="duotone" />, label: 'Connections' },
+  { to: '/exclusions',  icon: <Funnel size={20} weight="duotone" />,         label: 'Exclusions'  },
   { to: '/settings',    icon: <Gear size={20} weight="duotone" />,           label: 'Settings'    },
   { to: '/logs',        icon: <Article size={20} weight="duotone" />,         label: 'Logs'        },
 ]

@@ -199,6 +199,13 @@ public class JellyfinWebSocketServiceUriTests
 
 public class JellyfinWebSocketServiceHandlerTests
 {
+    private class DummyPlaybackActivityWriter : IPlaybackActivityWriter
+    {
+        public void Enqueue(string itemId, string userId, JellyfinUserData data, string username) {}
+        public Task ForceFlushAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task PruneOldActivitiesAsync(int ageLimitDays, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
     private static JellyfinWebSocketService MakeService(IPlaystateCache cache)
     {
         // IServiceScopeFactory is not exercised in these tests — null is safe here
@@ -206,6 +213,7 @@ public class JellyfinWebSocketServiceHandlerTests
         return new JellyfinWebSocketService(
             scopeFactory: null!,
             cache:        cache,
+            writer:       new DummyPlaybackActivityWriter(),
             logger:       NullLogger<JellyfinWebSocketService>.Instance);
     }
 

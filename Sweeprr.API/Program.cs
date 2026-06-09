@@ -102,6 +102,9 @@ builder.Services.AddSweeprrHttpClients();
 // Playstate cache — singleton so both the WS service and the rule engine (Sprint 3)
 // share the same in-memory store without additional locking at the DI layer.
 builder.Services.AddSingleton<IPlaystateCache, PlaystateCache>();
+builder.Services.AddSingleton<IPlaybackActivityWriter, PlaybackActivityWriter>();
+builder.Services.AddHostedService<PlaybackPruningWorker>();
+builder.Services.AddHostedService<ExpiredExclusionCleanupWorker>();
 
 // Jellyfin WebSocket service — register the concrete type as a singleton first so
 // that AddHostedService and IJellyfinWebSocketStatus both resolve the same instance.
@@ -142,6 +145,7 @@ app.MapScalarApiReference(options =>
 }).AllowAnonymous();
 
 await app.Services.MigrateAndSeedAsync();
+await app.Services.BackfillPlaystateCacheAsync();
 
 app.UseRateLimiter();
 

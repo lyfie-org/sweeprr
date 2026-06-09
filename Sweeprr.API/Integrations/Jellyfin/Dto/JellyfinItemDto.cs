@@ -19,4 +19,14 @@ public sealed record JellyfinItemDto
     public int? IndexNumber { get; init; }
     public int? ParentIndexNumber { get; init; }
     public string? Path { get; init; }
+    public System.Collections.Generic.IReadOnlyList<string>? Genres { get; init; }
+    public System.Collections.Generic.IReadOnlyList<JellyfinMediaStreamDto>? MediaStreams { get; init; }
+}
+
+public sealed record JellyfinMediaStreamDto
+{
+    public string? Type { get; init; }
+    public int? Height { get; init; }
+    public string? Codec { get; init; }
+    public int? Channels { get; init; }
 }

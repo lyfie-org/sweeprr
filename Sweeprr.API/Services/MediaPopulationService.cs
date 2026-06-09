@@ -75,11 +75,21 @@ public sealed class MediaPopulationService : IMediaPopulationService
 
         // Fetch *arr data in parallel with Jellyfin items
         var (radarrIndex, radarrConnId) = await BuildRadarrIndexAsync(db, clientFactory, matcher, ct);
-        var (sonarrIndex, sonarrConnId) = await BuildSonarrIndexAsync(db, clientFactory, matcher, ct);
+        var (sonarrIndex, sonarrConnId, sonarrClient, sonarrSeriesList) =
+            await BuildSonarrIndexWithClientAsync(db, clientFactory, matcher, ct);
         var radarrTags = await LoadRadarrTagsAsync(db, clientFactory, ct);
         var sonarrTags = await LoadSonarrTagsAsync(db, clientFactory, ct);
         var radarrProfiles = await LoadRadarrProfilesAsync(db, clientFactory, ct);
         var sonarrProfiles = await LoadSonarrProfilesAsync(db, clientFactory, ct);
+
+        // Only fetch episode data when the rule group actually uses IsFinale or CutoffMet —
+        // avoids N+1 Sonarr API calls for groups that don't need it.
+        bool needsEpisodeData = group.Rules.Any(r =>
+            r.Field is RuleField.IsFinale or RuleField.CutoffMet);
+
+        var episodesBySeries = needsEpisodeData && sonarrClient is not null && sonarrSeriesList is not null
+            ? await FetchEpisodesForAllSeriesAsync(sonarrClient, sonarrSeriesList, ct)
+            : new Dictionary<int, IReadOnlyList<SonarrEpisode>>();
 
         // Fetch Jellyfin items (per-user to get UserData)
         var primaryUserId = users.Count > 0 ? users[0].Id : null;
@@ -88,7 +98,7 @@ public sealed class MediaPopulationService : IMediaPopulationService
             {
                 UserId = primaryUserId,
                 IncludeItemTypes = itemTypes,
-                Fields = ["ProviderIds", "DateCreated", "UserData", "Path", "MediaStreams"],
+                Fields = ["ProviderIds", "DateCreated", "UserData", "Path", "MediaStreams", "Genres"],
             },
             maxItems: 10_000,
             ct: ct);
@@ -111,7 +121,7 @@ public sealed class MediaPopulationService : IMediaPopulationService
                 jItem, group.MediaType, users,
                 matcher, radarrIndex, radarrConnId, sonarrIndex, sonarrConnId,
                 radarrTags, sonarrTags, radarrProfiles, sonarrProfiles,
-                watchAgg);
+                episodesBySeries, watchAgg);
             contexts.Add(ctx);
         }
 
@@ -131,6 +141,7 @@ public sealed class MediaPopulationService : IMediaPopulationService
         IReadOnlyDictionary<int, string> sonarrTags,
         IReadOnlyDictionary<int, string> radarrProfiles,
         IReadOnlyDictionary<int, string> sonarrProfiles,
+        IReadOnlyDictionary<int, IReadOnlyList<SonarrEpisode>> episodesBySeries,
         IWatchAggregationService watchAgg)
     {
         int? seasonNumber = jItem.Type == JellyfinMediaType.Season ? jItem.IndexNumber : null;
@@ -145,6 +156,9 @@ public sealed class MediaPopulationService : IMediaPopulationService
         string? qualityProfile = null;
         decimal? fileSizeGb = null;
         int? arrConnectionId = null;
+        bool? seriesEnded = null;
+        bool? isFinale = null;
+        bool? cutoffMet = null;
 
         if (groupMediaType == MediaType.Movie && radarrIndex is not null)
         {
@@ -152,13 +166,15 @@ public sealed class MediaPopulationService : IMediaPopulationService
             if (match is MatchResult<RadarrMovie>.Matched m)
             {
                 var movie = m.Value;
-                arrConnectionId = radarrConnId; // ServerConnection.Id (not the arr-item ID)
+                arrConnectionId = radarrConnId;
                 monitored = movie.Monitored;
                 tags = movie.Tags.Select(t => radarrTags.GetValueOrDefault(t, t.ToString())).ToList();
                 qualityProfile = radarrProfiles.GetValueOrDefault(movie.QualityProfileId);
                 fileSizeGb = movie.SizeOnDisk > 0
                     ? Math.Round((decimal)movie.SizeOnDisk / 1_073_741_824m, 2)
                     : null;
+                // CutoffMet: false means "cutoff NOT met"; we want true = cutoff IS met
+                cutoffMet = movie.MovieFile?.QualityCutoffNotMet == false;
             }
         }
         else if (groupMediaType is MediaType.Series or MediaType.Season && sonarrIndex is not null)
@@ -167,16 +183,25 @@ public sealed class MediaPopulationService : IMediaPopulationService
             if (match is MatchResult<SonarrSeriesMatch>.Matched m)
             {
                 var series = m.Value.Series;
-                arrConnectionId = sonarrConnId; // ServerConnection.Id
+                arrConnectionId = sonarrConnId;
                 monitored = series.Monitored;
                 tags = series.Tags.Select(t => sonarrTags.GetValueOrDefault(t, t.ToString())).ToList();
                 qualityProfile = sonarrProfiles.GetValueOrDefault(series.QualityProfileId);
+                seriesEnded = series.Ended;
 
                 if (m.Value.Season is { } season)
                 {
                     fileSizeGb = season.SizeOnDisk > 0
                         ? Math.Round((decimal)season.SizeOnDisk / 1_073_741_824m, 2)
                         : null;
+                }
+
+                // IsFinale: true if any episode in this season has a non-null finaleType.
+                // seasonNumber is only set for Season-type items; Series-type items get null.
+                if (seasonNumber.HasValue && episodesBySeries.TryGetValue(series.Id, out var eps))
+                {
+                    isFinale = eps.Any(e =>
+                        e.SeasonNumber == seasonNumber.Value && e.FinaleType is not null);
                 }
             }
         }
@@ -196,12 +221,17 @@ public sealed class MediaPopulationService : IMediaPopulationService
                 : null,
             DateAdded = jItem.DateCreated?.UtcDateTime,
             Rating = jItem.CommunityRating.HasValue ? (decimal)jItem.CommunityRating.Value : null,
-            Genre = null,
-            ResolutionHeight = null,
+            Genres = jItem.Genres,
+            ResolutionHeight = jItem.ResolutionHeight,
+            VideoCodec = jItem.VideoCodec,
+            AudioChannels = jItem.AudioChannels,
             Monitored = monitored,
             Tags = tags,
             QualityProfile = qualityProfile,
             FileSizeGb = fileSizeGb,
+            SeriesEnded = seriesEnded,
+            IsFinale = isFinale,
+            CutoffMet = cutoffMet,
             // Provider IDs forwarded for execution-time *arr matching (stored on SweepItem)
             ImdbId = jItem.ProviderIds.ImdbId,
             TmdbId = jItem.ProviderIds.TmdbId,
@@ -264,19 +294,68 @@ public sealed class MediaPopulationService : IMediaPopulationService
         SweeprrDbContext db, IIntegrationClientFactory factory,
         IMediaMatchingService matcher, CancellationToken ct)
     {
+        var (index, connId, _, _) = await BuildSonarrIndexWithClientAsync(db, factory, matcher, ct);
+        return (index, connId);
+    }
+
+    private async Task<(ArrIndex<SonarrSeries>? Index, int? ConnectionId, SonarrClient? Client, IReadOnlyList<SonarrSeries>? Series)>
+        BuildSonarrIndexWithClientAsync(
+        SweeprrDbContext db, IIntegrationClientFactory factory,
+        IMediaMatchingService matcher, CancellationToken ct)
+    {
         var conn = await db.ServerConnections
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Type == ConnectionType.Sonarr && c.IsEnabled, ct);
 
-        if (conn is null) return (null, null);
+        if (conn is null) return (null, null, null, null);
 
         var client = await factory.CreateSonarrClientAsync(conn.Id, ct);
-        if (client is null) return (null, conn.Id);
+        if (client is null) return (null, conn.Id, null, null);
 
         var result = await client.GetSeriesAsync(ct);
-        if (result is not HttpResult<IReadOnlyList<SonarrSeries>>.Success ok) return (null, conn.Id);
+        if (result is not HttpResult<IReadOnlyList<SonarrSeries>>.Success ok)
+            return (null, conn.Id, client, null);
 
-        return (matcher.BuildSonarrIndex(ok.Value), conn.Id);
+        return (matcher.BuildSonarrIndex(ok.Value), conn.Id, client, ok.Value);
+    }
+
+    /// <summary>
+    /// Fetches all episodes for every series in the provided list.
+    /// Only called when a rule group uses <see cref="RuleField.IsFinale"/> or
+    /// <see cref="RuleField.CutoffMet"/>. Uses a bounded semaphore to limit
+    /// concurrent Sonarr requests to 4.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<int, IReadOnlyList<SonarrEpisode>>> FetchEpisodesForAllSeriesAsync(
+        SonarrClient client,
+        IReadOnlyList<SonarrSeries> allSeries,
+        CancellationToken ct)
+    {
+        using var semaphore = new SemaphoreSlim(4);
+        var tasks = allSeries.Select(async series =>
+        {
+            await semaphore.WaitAsync(ct);
+            try
+            {
+                var epResult = await client.GetEpisodesAsync(series.Id, ct);
+                return epResult is HttpResult<IReadOnlyList<SonarrEpisode>>.Success ok
+                    ? (series.Id, ok.Value)
+                    : (series.Id, (IReadOnlyList<SonarrEpisode>)[]);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        var fetched = await Task.WhenAll(tasks);
+        var result = new Dictionary<int, IReadOnlyList<SonarrEpisode>>(fetched.Length);
+        foreach (var (seriesId, episodes) in fetched)
+            result[seriesId] = episodes;
+
+        _logger.LogDebug("Fetched episode data for {Count} series (IsFinale/CutoffMet evaluation)",
+            result.Count);
+
+        return result;
     }
 
     private async Task<IReadOnlyDictionary<int, string>> LoadRadarrTagsAsync(

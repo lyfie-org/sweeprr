@@ -22,12 +22,17 @@ public sealed class ValueResolver : IValueResolver
             RuleField.ReleaseDate       => Lift(context.ReleaseDate,       context),
             RuleField.DateAdded         => Lift(context.DateAdded,         context),
             RuleField.Rating            => Lift(context.Rating,            context),
-            RuleField.Genre             => LiftString(context.Genre,       context),
+            RuleField.Genre             => LiftList(context.Genres,        context),
             RuleField.ResolutionHeight  => Lift(context.ResolutionHeight,  context),
+            RuleField.VideoCodec        => LiftString(context.VideoCodec,  context),
+            RuleField.AudioChannels     => Lift(context.AudioChannels,     context),
             RuleField.Monitored         => Lift(context.Monitored,         context),
             RuleField.Tags              => LiftList(context.Tags,          context),
             RuleField.QualityProfile    => LiftString(context.QualityProfile, context),
             RuleField.FileSizeGb        => Lift(context.FileSizeGb,        context),
+            RuleField.SeriesEnded       => Lift(context.SeriesEnded,       context),
+            RuleField.IsFinale          => Lift(context.IsFinale,          context),
+            RuleField.CutoffMet         => Lift(context.CutoffMet,         context),
             _                           => new ResolvedValue.Missing()
         };
     }

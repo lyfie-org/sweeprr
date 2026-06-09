@@ -8,8 +8,9 @@ import {
   VALUELESS_COMPARATORS,
   inferValueType,
 } from '../../api/rules'
-import { Toggle } from '../ui'
 import { TagMultiselect } from './TagMultiselect'
+import { GenreMultiselect } from './GenreMultiselect'
+import { Toggle } from '../ui';
 
 interface ConditionRowProps {
   condition: RuleConditionDto
@@ -190,6 +191,24 @@ export function ConditionRow({
           </div>
         )
       case 'Number':
+        if (condition.field === 'ResolutionHeight') {
+          return (
+            <div className="condition-row__select-wrap">
+              <select
+                className="condition-row__select"
+                value={condition.value}
+                onChange={e => handleValueChange(e.target.value)}
+                disabled={disabled}
+              >
+                <option value="">Select resolution...</option>
+                <option value="2160">4K (2160p)</option>
+                <option value="1080">1080p</option>
+                <option value="720">720p</option>
+                <option value="480">480p</option>
+              </select>
+            </div>
+          )
+        }
         return (
           <input
             type="number"
@@ -201,6 +220,15 @@ export function ConditionRow({
           />
         )
       case 'TextList':
+        if (condition.field === 'Genre') {
+          return (
+            <GenreMultiselect
+              value={tagValues}
+              onChange={handleTagsChange}
+              disabled={disabled}
+            />
+          )
+        }
         return (
           <TagMultiselect
             connectionId={arrConnectionId}

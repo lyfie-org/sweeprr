@@ -8,4 +8,5 @@ public sealed record SonarrEpisodeFile(
     string?         Path,
     long?           Size,
     DateTimeOffset? DateAdded,
-    string?         ReleaseGroup);
+    string?         ReleaseGroup,
+    bool?           QualityCutoffNotMet);

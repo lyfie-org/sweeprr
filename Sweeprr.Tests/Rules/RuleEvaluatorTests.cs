@@ -263,13 +263,13 @@ public class RuleEvaluatorTests
     // ═══════════════════════════════════════════════════════════════════════════
 
     [Fact]
-    public async Task Text_Contains_Matches()
+    public async Task Genre_Contains_Matches()
     {
-        var group = Group(R(RuleField.Genre, RuleComparator.Contains, "Action", RuleValueType.Text));
+        var group = Group(R(RuleField.Genre, RuleComparator.Contains, "Action", RuleValueType.TextList));
         var items = new[]
         {
-            new MediaContext { ItemId = "1", Title = "A", MediaType = MediaType.Movie, Genre = "Action/Adventure" },
-            new MediaContext { ItemId = "2", Title = "B", MediaType = MediaType.Movie, Genre = "Comedy" },
+            new MediaContext { ItemId = "1", Title = "A", MediaType = MediaType.Movie, Genres = new[] { "Action", "Adventure" } },
+            new MediaContext { ItemId = "2", Title = "B", MediaType = MediaType.Movie, Genres = new[] { "Comedy" } },
         };
 
         var results = await _evaluator.EvaluateAsync(group, items);
@@ -279,13 +279,13 @@ public class RuleEvaluatorTests
     }
 
     [Fact]
-    public async Task Text_NotContains_Matches()
+    public async Task Genre_NotContains_Matches()
     {
-        var group = Group(R(RuleField.Genre, RuleComparator.NotContains, "Action", RuleValueType.Text));
+        var group = Group(R(RuleField.Genre, RuleComparator.NotContains, "Action", RuleValueType.TextList));
         var items = new[]
         {
-            new MediaContext { ItemId = "1", Title = "A", MediaType = MediaType.Movie, Genre = "Comedy" },
-            new MediaContext { ItemId = "2", Title = "B", MediaType = MediaType.Movie, Genre = "Action" },
+            new MediaContext { ItemId = "1", Title = "A", MediaType = MediaType.Movie, Genres = new[] { "Comedy" } },
+            new MediaContext { ItemId = "2", Title = "B", MediaType = MediaType.Movie, Genres = new[] { "Action" } },
         };
 
         var results = await _evaluator.EvaluateAsync(group, items);
@@ -712,5 +712,135 @@ public class RuleEvaluatorTests
             // items 6–20 (index 5–19): FileSizeGb 6–20, all > 5
             Assert.Equal(i >= 5, results[i].IsMatch);
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TV-specific fields: SeriesEnded, IsFinale, CutoffMet (Story 7.3)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task SeriesEnded_True_Matches()
+    {
+        var group = Group(R(RuleField.SeriesEnded, RuleComparator.Equals, "true", RuleValueType.Bool));
+        var items = new[]
+        {
+            new MediaContext { ItemId = "1", Title = "Ended",   MediaType = MediaType.Series, SeriesEnded = true  },
+            new MediaContext { ItemId = "2", Title = "Ongoing", MediaType = MediaType.Series, SeriesEnded = false },
+        };
+
+        var results = await _evaluator.EvaluateAsync(group, items);
+
+        Assert.True(results[0].IsMatch);
+        Assert.False(results[1].IsMatch);
+    }
+
+    [Fact]
+    public async Task SeriesEnded_False_MatchesOngoing()
+    {
+        var group = Group(R(RuleField.SeriesEnded, RuleComparator.Equals, "false", RuleValueType.Bool));
+        var items = new[]
+        {
+            new MediaContext { ItemId = "1", Title = "Ended",   MediaType = MediaType.Series, SeriesEnded = true  },
+            new MediaContext { ItemId = "2", Title = "Ongoing", MediaType = MediaType.Series, SeriesEnded = false },
+        };
+
+        var results = await _evaluator.EvaluateAsync(group, items);
+
+        Assert.False(results[0].IsMatch);
+        Assert.True(results[1].IsMatch);
+    }
+
+    [Fact]
+    public async Task SeriesEnded_Null_IsMissing_DoesNotMatch()
+    {
+        var group = Group(R(RuleField.SeriesEnded, RuleComparator.Equals, "true", RuleValueType.Bool));
+        var item  = new MediaContext { ItemId = "1", Title = "No Sonarr data", MediaType = MediaType.Series };
+
+        var results = await _evaluator.EvaluateAsync(group, [item]);
+
+        Assert.False(results[0].IsMatch);
+        Assert.False(results[0].WasExcluded);  // Missing ≠ Transient; item not excluded
+    }
+
+    [Fact]
+    public async Task IsFinale_True_Matches()
+    {
+        var group = Group(R(RuleField.IsFinale, RuleComparator.Equals, "true", RuleValueType.Bool));
+        var items = new[]
+        {
+            new MediaContext { ItemId = "1", Title = "Finale Season",     MediaType = MediaType.Season, IsFinale = true  },
+            new MediaContext { ItemId = "2", Title = "Non-Finale Season",  MediaType = MediaType.Season, IsFinale = false },
+        };
+
+        var results = await _evaluator.EvaluateAsync(group, items);
+
+        Assert.True(results[0].IsMatch);
+        Assert.False(results[1].IsMatch);
+    }
+
+    [Fact]
+    public async Task CutoffMet_True_MatchesHighQuality()
+    {
+        var group = Group(R(RuleField.CutoffMet, RuleComparator.Equals, "true", RuleValueType.Bool));
+        var items = new[]
+        {
+            new MediaContext { ItemId = "1", Title = "HD Quality",   MediaType = MediaType.Movie, CutoffMet = true  },
+            new MediaContext { ItemId = "2", Title = "Still Seeking", MediaType = MediaType.Movie, CutoffMet = false },
+        };
+
+        var results = await _evaluator.EvaluateAsync(group, items);
+
+        Assert.True(results[0].IsMatch);
+        Assert.False(results[1].IsMatch);
+    }
+
+    [Fact]
+    public async Task CutoffMet_False_MatchesStillSeeking()
+    {
+        var group = Group(R(RuleField.CutoffMet, RuleComparator.Equals, "false", RuleValueType.Bool));
+        var items = new[]
+        {
+            new MediaContext { ItemId = "1", Title = "HD Quality",    MediaType = MediaType.Movie, CutoffMet = true  },
+            new MediaContext { ItemId = "2", Title = "Still Seeking", MediaType = MediaType.Movie, CutoffMet = false },
+        };
+
+        var results = await _evaluator.EvaluateAsync(group, items);
+
+        Assert.False(results[0].IsMatch);
+        Assert.True(results[1].IsMatch);
+    }
+
+    [Fact]
+    public async Task SeriesEnded_And_LastWatched_CompoundRule_Matches()
+    {
+        // Series must be ended AND watched more than 30 days ago
+        var cutoff = DateTime.UtcNow.AddDays(-40);
+        var group  = Group(
+            R(RuleField.SeriesEnded,  RuleComparator.Equals,      "true",  RuleValueType.Bool,         section: 0, op: null,                    id: 1),
+            R(RuleField.LastWatched,  RuleComparator.InLastDays,  "30",    RuleValueType.RelativeDays, section: 0, op: LogicalOperator.And,      id: 2)
+        );
+
+        // InLastDays=30 → true means watched within 30 days. We want NOT in last 30 days.
+        // Using NotInLastDays instead:
+        var group2 = Group(
+            R(RuleField.SeriesEnded,  RuleComparator.Equals,         "true", RuleValueType.Bool,         section: 0, op: null,                id: 1),
+            R(RuleField.LastWatched,  RuleComparator.NotInLastDays,  "30",   RuleValueType.RelativeDays, section: 0, op: LogicalOperator.And, id: 2)
+        );
+
+        var items = new[]
+        {
+            // Ended + watched 40 days ago → matches NotInLastDays(30)
+            new MediaContext { ItemId = "1", Title = "Match",     MediaType = MediaType.Series, SeriesEnded = true,  LastWatched = cutoff },
+            // Ended + watched recently → doesn't match NotInLastDays(30)
+            new MediaContext { ItemId = "2", Title = "TooRecent", MediaType = MediaType.Series, SeriesEnded = true,  LastWatched = DateTime.UtcNow.AddDays(-5) },
+            // Not ended + watched 40 days ago → doesn't match SeriesEnded
+            new MediaContext { ItemId = "3", Title = "NotEnded",  MediaType = MediaType.Series, SeriesEnded = false, LastWatched = cutoff },
+        };
+
+        var results = await _evaluator.EvaluateAsync(group2, items);
+
+        Assert.True(results[0].IsMatch);
+        Assert.False(results[1].IsMatch);
+        Assert.False(results[2].IsMatch);
     }
 }

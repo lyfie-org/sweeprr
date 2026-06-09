@@ -19,6 +19,8 @@ public sealed record RuleGroupResponse(
     bool IsEnabled,
     string? CronOverride,
     SweepAction Action,
+    int? TargetQualityProfileId,
+    string? TargetQualityProfileName,
     DateTime CreatedAt,
     DateTime UpdatedAt,
     IReadOnlyList<RuleConditionResponse> Conditions);
