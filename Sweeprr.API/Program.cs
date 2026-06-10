@@ -91,6 +91,7 @@ builder.Services.AddScoped<IRuleValidationService, RuleValidationService>();
 builder.Services.AddScoped<IValueResolver, ValueResolver>();
 builder.Services.AddScoped<IRuleEvaluator, RuleEvaluator>();
 builder.Services.AddScoped<IWatchAggregationService, WatchAggregationService>();
+builder.Services.AddScoped<IMediaExplorerService, MediaExplorerService>();
 
 // Background scheduler — singleton so the controller can trigger manual scans on the same instance.
 builder.Services.AddSingleton<IScanPipeline, ScanPipeline>();

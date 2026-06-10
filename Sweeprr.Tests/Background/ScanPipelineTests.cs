@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -160,6 +161,8 @@ public class ScanPipelineTests : IDisposable
         services.AddScoped<ISweepQueueService, SweepQueueService>();
         services.AddScoped<IMediaPopulationService>(_ => new FakeMediaPopulationService(mediaItems));
         services.AddScoped<IRuleEvaluator>(_ => new FakeRuleEvaluator(matchAll));
+        services.AddSingleton(Channel.CreateUnbounded<byte>());
+        services.AddScoped<IOverlayRenderingService, FakeOverlayRenderingService>();
 
         var sp = services.BuildServiceProvider();
 
@@ -224,5 +227,17 @@ public class ScanPipelineTests : IDisposable
 
             return Task.FromResult<IReadOnlyList<EvaluationResult>>(results);
         }
+
+        public Task<IReadOnlyList<RuleGroupTrace>> TraceAsync(
+            MediaContext item,
+            IEnumerable<RuleGroup> groups,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<RuleGroupTrace>>([]);
+    }
+
+    private sealed class FakeOverlayRenderingService : IOverlayRenderingService
+    {
+        public Task ApplyOverlayAsync(SweepItem item, string labelText, CancellationToken ct) => Task.CompletedTask;
+        public Task RestoreOriginalAsync(SweepItem item, CancellationToken ct) => Task.CompletedTask;
     }
 }

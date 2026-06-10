@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Data;
@@ -194,7 +195,16 @@ public class TagExclusionTests : IDisposable
         var db = new SweeprrDbContext(options);
         db.Database.Migrate();
 
-        return (new SweepQueueService(db), db);
+        var channel = Channel.CreateUnbounded<byte>();
+        var overlay = new FakeOverlayRenderingService();
+
+        return (new SweepQueueService(db, channel, overlay), db);
+    }
+
+    private sealed class FakeOverlayRenderingService : IOverlayRenderingService
+    {
+        public Task ApplyOverlayAsync(SweepItem item, string labelText, CancellationToken ct) => Task.CompletedTask;
+        public Task RestoreOriginalAsync(SweepItem item, CancellationToken ct) => Task.CompletedTask;
     }
 
     private static async Task<RuleGroup> SeedGroupAsync(SweeprrDbContext db, string name = "Test Group")

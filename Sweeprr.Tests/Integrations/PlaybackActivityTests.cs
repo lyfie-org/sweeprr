@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sweeprr.API.Data;
 using Sweeprr.API.Integrations;
+using Sweeprr.API.Integrations.Bazarr;
 using Sweeprr.API.Integrations.Jellyfin;
 using Sweeprr.API.Integrations.Jellyfin.Models;
 using Sweeprr.API.Integrations.Jellyfin.WebSocket;
@@ -260,5 +261,8 @@ public class PlaybackActivityTests : IDisposable
 
         public Task<SonarrClient?> CreateSonarrClientAsync(int connectionId, CancellationToken ct = default)
             => Task.FromResult<SonarrClient?>(null);
+
+        public Task<BazarrClient?> CreateBazarrClientAsync(CancellationToken ct = default)
+            => Task.FromResult<BazarrClient?>(null);
     }
 }

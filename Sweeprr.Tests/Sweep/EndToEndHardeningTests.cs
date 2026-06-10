@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Sweeprr.API.Data;
 using Sweeprr.API.Dtos.Sweep;
 using Sweeprr.API.Integrations;
+using Sweeprr.API.Integrations.Bazarr;
 using Sweeprr.API.Integrations.Jellyfin;
 using Sweeprr.API.Integrations.Matching;
 using Sweeprr.API.Integrations.Radarr;
@@ -300,6 +301,7 @@ public class EndToEndHardeningTests : IDisposable
 
         var executor = new SweepExecutor(
             db2, clientFactory, matcher, failsafe,
+            new FakeOverlayRenderingService(),
             NullLogger<SweepExecutor>.Instance);
 
         return (executor, db2);
@@ -395,6 +397,17 @@ public class EndToEndHardeningTests : IDisposable
 
         public Task<SonarrClient?> CreateSonarrClientAsync(int connectionId, CancellationToken ct)
             => Task.FromResult<SonarrClient?>(null);
+
+        public Task<BazarrClient?> CreateBazarrClientAsync(CancellationToken ct = default)
+            => Task.FromResult<BazarrClient?>(null);
+    }
+
+    // ── Fake IOverlayRenderingService ─────────────────────────────────────────
+
+    private sealed class FakeOverlayRenderingService : IOverlayRenderingService
+    {
+        public Task ApplyOverlayAsync(SweepItem item, string labelText, CancellationToken ct) => Task.CompletedTask;
+        public Task RestoreOriginalAsync(SweepItem item, CancellationToken ct) => Task.CompletedTask;
     }
 
     // ── JSON helpers ──────────────────────────────────────────────────────────

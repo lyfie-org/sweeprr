@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage'
 import { SetupPage } from './pages/SetupPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { SweepPage } from './pages/SweepPage'
+import { MediaPage } from './pages/MediaPage'
 import { RulesPage } from './pages/RulesPage'
 import { ConnectionsPage } from './pages/ConnectionsPage'
 import { ExclusionsPage } from './pages/ExclusionsPage'
@@ -29,6 +30,7 @@ const router = createBrowserRouter([
         children: [
           { index: true,           element: <DashboardPage />   },
           { path: 'sweep',         element: <SweepPage />       },
+          { path: 'media',         element: <MediaPage />       },
           { path: 'rules',         element: <RulesPage />       },
           { path: 'connections',   element: <ConnectionsPage /> },
           { path: 'exclusions',    element: <ExclusionsPage />  },

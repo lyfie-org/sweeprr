@@ -65,6 +65,105 @@ public sealed class RuleEvaluator : IRuleEvaluator
         return results;
     }
 
+    public Task<IReadOnlyList<RuleGroupTrace>> TraceAsync(
+        MediaContext item,
+        IEnumerable<RuleGroup> groups,
+        CancellationToken cancellationToken = default)
+    {
+        var traces = new List<RuleGroupTrace>();
+
+        foreach (var group in groups)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (group.Rules is null || group.Rules.Count == 0)
+            {
+                traces.Add(new RuleGroupTrace(group.Id, group.Name, false, []));
+                continue;
+            }
+
+            var sections = group.Rules
+                .OrderBy(r => r.Section)
+                .ThenBy(r => r.Id)
+                .GroupBy(r => r.Section)
+                .OrderBy(g => g.Key)
+                .Select(g => g.ToList())
+                .ToList();
+
+            traces.Add(TraceGroup(item, group, sections));
+        }
+
+        return Task.FromResult<IReadOnlyList<RuleGroupTrace>>(traces);
+    }
+
+    /// <summary>
+    /// Mirrors <see cref="EvaluateItem"/>'s section-folding logic, but records every
+    /// clause's individual result instead of short-circuiting on the first transient value.
+    /// </summary>
+    private RuleGroupTrace TraceGroup(MediaContext item, RuleGroup group, List<List<Rule>> sections)
+    {
+        var clauses = new List<ClauseTrace>();
+        var anyTransient = item.HasTransientFailure;
+        bool? runningResult = null;
+
+        for (var si = 0; si < sections.Count; si++)
+        {
+            var sectionRules = sections[si];
+            bool? sectionResult = null;
+
+            foreach (var rule in sectionRules)
+            {
+                bool? clauseResult;
+                if (item.HasTransientFailure)
+                {
+                    clauseResult = null;
+                }
+                else
+                {
+                    var resolved = _valueResolver.Resolve(rule.Field, item);
+                    clauseResult = ConditionEvaluator.Evaluate(rule, resolved);
+                }
+
+                clauses.Add(new ClauseTrace(rule.Section, rule.LogicalOperator, rule.Field, rule.Comparator, rule.Value, clauseResult));
+
+                if (clauseResult is null)
+                {
+                    anyTransient = true;
+                    continue;
+                }
+
+                if (sectionResult is null)
+                {
+                    sectionResult = clauseResult.Value;
+                }
+                else
+                {
+                    var op = rule.LogicalOperator ?? LogicalOperator.And;
+                    sectionResult = op == LogicalOperator.Or
+                        ? sectionResult.Value || clauseResult.Value
+                        : sectionResult.Value && clauseResult.Value;
+                }
+            }
+
+            var sectionValue = sectionResult ?? false;
+
+            if (si == 0)
+            {
+                runningResult = sectionValue;
+            }
+            else
+            {
+                var interOp = sectionRules[0].LogicalOperator ?? LogicalOperator.And;
+                runningResult = interOp == LogicalOperator.Or
+                    ? (runningResult ?? false) || sectionValue
+                    : (runningResult ?? false) && sectionValue;
+            }
+        }
+
+        var matched = !anyTransient && (runningResult ?? false);
+        return new RuleGroupTrace(group.Id, group.Name, matched, clauses);
+    }
+
     // ── Per-item evaluation ───────────────────────────────────────────────────
 
     private EvaluationResult EvaluateItem(MediaContext item, List<List<Rule>> sections)
