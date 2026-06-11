@@ -297,6 +297,86 @@ public sealed class JellyfinClient : ClientBase
         CancellationToken ct = default)
         => DeleteAsync($"/Items/{Uri.EscapeDataString(itemId)}", ct);
 
+    // ── Sessions ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns all currently active Jellyfin playback sessions, including each
+    /// session's NowPlayingItem (if any). Used by Story 10.2 to match in-progress
+    /// playback against the sweep queue and to broadcast pre-sweep warnings.
+    /// </summary>
+    public async Task<HttpResult<IReadOnlyList<JellyfinSession>>> GetActiveSessionsAsync(
+        CancellationToken ct = default)
+    {
+        var result = await GetAsync<JellyfinSessionDto[]>("/Sessions", ct);
+        return result.Map(dtos =>
+            (IReadOnlyList<JellyfinSession>)Array.ConvertAll(dtos, JellyfinSession.From));
+    }
+
+    /// <summary>
+    /// Sends an in-app toast/message to the given session's Jellyfin client.
+    /// Best-effort — callers should treat failures as non-fatal (the session may
+    /// have ended between the GetActiveSessionsAsync call and this one).
+    /// </summary>
+    public Task<HttpResult<EmptyResponse>> SendSessionMessageAsync(
+        string sessionId,
+        string header,
+        string text,
+        int timeoutMs = 8000,
+        CancellationToken ct = default)
+    {
+        var body = new { Header = header, Text = text, TimeoutMs = timeoutMs };
+        return PostAsync<EmptyResponse>(
+            $"/Sessions/{Uri.EscapeDataString(sessionId)}/Message", body, ct);
+    }
+
+    // ── Playback Reporting plugin ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Detects whether the jellyfin-plugin-playback-reporting plugin is installed by
+    /// probing one of its report endpoints. Returns true (200 OK), false (404 Not Found),
+    /// or null when the result is inconclusive (network error, 5xx, etc.) — callers
+    /// should leave the previously-known status unchanged on null.
+    /// </summary>
+    public async Task<bool?> GetPlaybackReportingPluginStatusAsync(CancellationToken ct = default)
+    {
+        var url = BuildUrl("/PlaybackReporting/Report/Hourly/User");
+        try
+        {
+            using var response = await Http.GetAsync(url, ct);
+            if (response.IsSuccessStatusCode) return true;
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+
+            Logger.LogWarning(
+                "[JellyfinClient] Unexpected status {Status} probing Playback Reporting plugin",
+                (int)response.StatusCode);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "[JellyfinClient] Failed to probe Playback Reporting plugin");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Runs the Playback Reporting plugin's aggregate backfill query: total play count
+    /// and most recent play timestamp per (item, user) pair across all recorded history.
+    /// Requires the plugin to be installed — call
+    /// <see cref="GetPlaybackReportingPluginStatusAsync"/> first.
+    /// </summary>
+    public async Task<HttpResult<IReadOnlyList<PlaybackReportRow>>> GetPlaybackReportBackfillAsync(
+        CancellationToken ct = default)
+    {
+        var body = new
+        {
+            CustomQueryString = "SELECT ItemId, UserId, COUNT(*) as PlayCount, MAX(DateCreated) as LastPlayed FROM PlaybackActivity GROUP BY ItemId, UserId",
+            ReplaceUserId = true
+        };
+
+        var result = await PostAsync<PlaybackReportQueryResultDto>("/user_usage_stats/submit_custom_query", body, ct);
+        return result.Map(dto => dto.ToRows(Logger));
+    }
+
     // ── Path / query building ────────────────────────────────────────────────
 
     private static string BuildItemsPath(GetItemsRequest request)

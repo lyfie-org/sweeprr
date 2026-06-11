@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sweeprr.API.Integrations.Jellyfin.Models;
 using Sweeprr.API.Integrations.Jellyfin.WebSocket;
+using Sweeprr.API.Services;
 
 namespace Sweeprr.Tests.Integrations;
 
@@ -206,15 +207,36 @@ public class JellyfinWebSocketServiceHandlerTests
         public Task PruneOldActivitiesAsync(int ageLimitDays, CancellationToken ct = default) => Task.CompletedTask;
     }
 
-    private static JellyfinWebSocketService MakeService(IPlaystateCache cache)
+    private sealed class FakeSessionAlertService : IJellyfinSessionAlertService
+    {
+        private readonly TaskCompletionSource _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int ConnectionId { get; private set; }
+        public IReadOnlyList<JellyfinSession>? Sessions { get; private set; }
+        public Task Called => _tcs.Task;
+
+        public Task ProcessSessionsUpdateAsync(
+            int connectionId, IReadOnlyList<JellyfinSession> sessions, CancellationToken ct = default)
+        {
+            ConnectionId = connectionId;
+            Sessions = sessions;
+            _tcs.TrySetResult();
+            return Task.CompletedTask;
+        }
+
+        public Task BroadcastPreSweepWarningAsync(CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private static JellyfinWebSocketService MakeService(IPlaystateCache cache, IJellyfinSessionAlertService? sessionAlerts = null)
     {
         // IServiceScopeFactory is not exercised in these tests — null is safe here
-        // because HandleUserDataChanged is synchronous and does not create scopes
+        // because HandleUserDataChanged/HandleSessionsMessage are synchronous and do not create scopes
         return new JellyfinWebSocketService(
-            scopeFactory: null!,
-            cache:        cache,
-            writer:       new DummyPlaybackActivityWriter(),
-            logger:       NullLogger<JellyfinWebSocketService>.Instance);
+            scopeFactory:  null!,
+            cache:         cache,
+            writer:        new DummyPlaybackActivityWriter(),
+            sessionAlerts: sessionAlerts ?? new FakeSessionAlertService(),
+            logger:        NullLogger<JellyfinWebSocketService>.Instance);
     }
 
     private static JsonElement ParseJson(string json) =>
@@ -303,5 +325,95 @@ public class JellyfinWebSocketServiceHandlerTests
         // Should not throw — log and return
         service.HandleUserDataChanged(ParseJson("{}"));
         service.HandleUserDataChanged(ParseJson("null"));
+    }
+}
+
+// ── JellyfinWebSocketService — Sessions handler ──────────────────────────────
+
+public class JellyfinWebSocketServiceSessionsTests
+{
+    private class DummyPlaybackActivityWriter : IPlaybackActivityWriter
+    {
+        public void Enqueue(string itemId, string userId, JellyfinUserData data, string username) {}
+        public Task ForceFlushAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task PruneOldActivitiesAsync(int ageLimitDays, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class FakeSessionAlertService : IJellyfinSessionAlertService
+    {
+        private readonly TaskCompletionSource _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int ConnectionId { get; private set; }
+        public IReadOnlyList<JellyfinSession>? Sessions { get; private set; }
+        public Task Called => _tcs.Task;
+
+        public Task ProcessSessionsUpdateAsync(
+            int connectionId, IReadOnlyList<JellyfinSession> sessions, CancellationToken ct = default)
+        {
+            ConnectionId = connectionId;
+            Sessions = sessions;
+            _tcs.TrySetResult();
+            return Task.CompletedTask;
+        }
+
+        public Task BroadcastPreSweepWarningAsync(CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private static JellyfinWebSocketService MakeService(IJellyfinSessionAlertService sessionAlerts) =>
+        new(
+            scopeFactory:  null!,
+            cache:         new PlaystateCache(),
+            writer:        new DummyPlaybackActivityWriter(),
+            sessionAlerts: sessionAlerts,
+            logger:        NullLogger<JellyfinWebSocketService>.Instance);
+
+    private static JsonElement ParseJson(string json) =>
+        JsonDocument.Parse(json).RootElement;
+
+    [Fact]
+    public async Task HandleSessionsMessage_Forwards_Mapped_Sessions_To_AlertService()
+    {
+        var fake    = new FakeSessionAlertService();
+        var service = MakeService(fake);
+
+        service.HandleSessionsMessage(ParseJson("""
+            [
+                {"Id": "session-1", "UserId": "user-1", "NowPlayingItem": {"Id": "item-1"}},
+                {"Id": "session-2", "UserId": "user-2"}
+            ]
+            """), connectionId: 42, CancellationToken.None);
+
+        await fake.Called.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(42, fake.ConnectionId);
+        Assert.Equal(2, fake.Sessions!.Count);
+        Assert.Equal("session-1", fake.Sessions[0].Id);
+        Assert.Equal("item-1",    fake.Sessions[0].NowPlayingItemId);
+        Assert.Equal("session-2", fake.Sessions[1].Id);
+        Assert.Null(fake.Sessions[1].NowPlayingItemId);
+    }
+
+    [Fact]
+    public void HandleSessionsMessage_Empty_Array_Does_Not_Call_AlertService()
+    {
+        var fake    = new FakeSessionAlertService();
+        var service = MakeService(fake);
+
+        service.HandleSessionsMessage(ParseJson("[]"), 1, CancellationToken.None);
+
+        Assert.False(fake.Called.IsCompleted);
+    }
+
+    [Fact]
+    public void HandleSessionsMessage_Survives_Malformed_Json()
+    {
+        var fake    = new FakeSessionAlertService();
+        var service = MakeService(fake);
+
+        // Should not throw — log and return
+        service.HandleSessionsMessage(ParseJson("{}"), 1, CancellationToken.None);
+        service.HandleSessionsMessage(ParseJson("null"), 1, CancellationToken.None);
+
+        Assert.False(fake.Called.IsCompleted);
     }
 }

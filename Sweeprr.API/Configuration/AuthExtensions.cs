@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Sweeprr.API.Auth;
 using Sweeprr.API.Services;
 
 namespace Sweeprr.API.Configuration;
@@ -14,7 +15,8 @@ public static class AuthExtensions
         services.AddSingleton<JwtKeyProvider>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddJwtBearer();
+            .AddJwtBearer()
+            .AddScheme<ApiKeyAuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", _ => { });
 
         // Configure JwtBearerOptions via factory so JwtKeyProvider is properly injected —
         // avoids the BuildServiceProvider() anti-pattern in inline lambdas.
@@ -39,12 +41,41 @@ public static class AuthExtensions
                 });
         });
 
-        // Global policy: all endpoints require auth unless decorated with [AllowAnonymous].
+        services.AddSingleton<IAuthorizationHandler, ScopeAuthorizationHandler>();
+
+        // Global policy: all endpoints require auth (JWT or Sweeprr API key) unless
+        // decorated with [AllowAnonymous].
         services.AddAuthorization(options =>
         {
-            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+            var authenticatedUser = new AuthorizationPolicyBuilder()
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme, "ApiKey")
                 .RequireAuthenticatedUser()
                 .Build();
+
+            options.DefaultPolicy = authenticatedUser;
+            options.FallbackPolicy = authenticatedUser;
+
+            // Scope-gated policies for sensitive endpoints. JWT-authenticated admins
+            // (the only human role) always satisfy these — see ScopeAuthorizationHandler.
+            options.AddPolicy("ReadSweep", p => p
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme, "ApiKey")
+                .RequireAuthenticatedUser()
+                .AddRequirements(new ScopeRequirement(ApiKeyScopes.ReadSweep)));
+
+            options.AddPolicy("WriteSweep", p => p
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme, "ApiKey")
+                .RequireAuthenticatedUser()
+                .AddRequirements(new ScopeRequirement(ApiKeyScopes.WriteSweep)));
+
+            options.AddPolicy("ExecuteSweep", p => p
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme, "ApiKey")
+                .RequireAuthenticatedUser()
+                .AddRequirements(new ScopeRequirement(ApiKeyScopes.ExecuteSweep)));
+
+            options.AddPolicy("AdminOnly", p => p
+                .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme, "ApiKey")
+                .RequireAuthenticatedUser()
+                .AddRequirements(new ScopeRequirement(ApiKeyScopes.Admin)));
         });
 
         return services;

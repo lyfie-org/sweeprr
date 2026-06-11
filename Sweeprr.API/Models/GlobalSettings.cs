@@ -56,4 +56,19 @@ public class GlobalSettings
     /// Default is <c>/config/poster-backups</c>.
     /// </summary>
     public string PosterBackupDir { get; set; } = "/config/poster-backups";
+
+    /// <summary>
+    /// When <c>true</c>, <c>JellyfinSessionAlertService</c> sends an in-app message to any
+    /// active Jellyfin session whose NowPlayingItem is Pending or Approved in the Sweep
+    /// Queue, warning that the item may be removed soon.
+    /// Default is <c>true</c>.
+    /// </summary>
+    public bool JellyfinSessionAlertsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// When <c>true</c>, 10 minutes before each scheduled sweep run, a broadcast message
+    /// is sent to all active Jellyfin sessions warning that cleanup is about to begin.
+    /// Default is <c>true</c>.
+    /// </summary>
+    public bool PreSweepBroadcastEnabled { get; set; } = true;
 }

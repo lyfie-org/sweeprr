@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Data;
+using Sweeprr.API.Integrations.Jellyfin.Dto;
 using Sweeprr.API.Integrations.Jellyfin.Models;
 using Sweeprr.API.Models;
 using Sweeprr.API.Services;
@@ -65,6 +66,7 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IPlaystateCache      _cache;
     private readonly IPlaybackActivityWriter _writer;
+    private readonly IJellyfinSessionAlertService _sessionAlerts;
     private readonly ILogger<JellyfinWebSocketService> _logger;
 
     private readonly ConcurrentDictionary<string, string> _userIdToUsernameMap = new(StringComparer.OrdinalIgnoreCase);
@@ -77,12 +79,14 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
         IServiceScopeFactory scopeFactory,
         IPlaystateCache      cache,
         IPlaybackActivityWriter writer,
+        IJellyfinSessionAlertService sessionAlerts,
         ILogger<JellyfinWebSocketService> logger)
     {
-        _scopeFactory = scopeFactory;
-        _cache        = cache;
-        _writer       = writer;
-        _logger       = logger;
+        _scopeFactory  = scopeFactory;
+        _cache         = cache;
+        _writer        = writer;
+        _sessionAlerts = sessionAlerts;
+        _logger        = logger;
     }
 
     // ── BackgroundService entry point ────────────────────────────────────────
@@ -248,6 +252,11 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
                     HandlePlaybackStop(message.Data.Value, connectionId, ct);
                 break;
 
+            case "Sessions":
+                if (message.Data.HasValue)
+                    HandleSessionsMessage(message.Data.Value, connectionId, ct);
+                break;
+
             default:
                 _logger.LogDebug(
                     "Jellyfin WS: ignoring message type '{Type}'", message.MessageType);
@@ -330,6 +339,42 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
 
         // Re-fetch via REST so we get authoritative data (WS delta may be incomplete)
         _ = RefetchUserDataAsync(connectionId, itemId, userId, ct);
+    }
+
+    internal void HandleSessionsMessage(JsonElement data, int connectionId, CancellationToken ct)
+    {
+        JellyfinSessionDto[]? sessions;
+
+        try { sessions = data.Deserialize<JellyfinSessionDto[]>(JsonOpts); }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to deserialize Sessions payload.");
+            return;
+        }
+
+        if (sessions is not { Length: > 0 }) return;
+
+        var mapped = Array.ConvertAll(sessions, JellyfinSession.From);
+        _ = ProcessSessionAlertsAsync(connectionId, mapped, ct);
+    }
+
+    /// <summary>
+    /// Forwards a "Sessions" WS push to <see cref="IJellyfinSessionAlertService"/>.
+    /// Wrapped here (in addition to the service's own internal guards) so that an
+    /// unexpected exception can never take down the WS message loop.
+    /// </summary>
+    private async Task ProcessSessionAlertsAsync(
+        int connectionId, IReadOnlyList<JellyfinSession> sessions, CancellationToken ct)
+    {
+        try
+        {
+            await _sessionAlerts.ProcessSessionsUpdateAsync(connectionId, sessions, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to process Sessions update for session alerts.");
+        }
     }
 
     // ── REST re-fetch on PlaybackStop ────────────────────────────────────────

@@ -93,6 +93,10 @@ builder.Services.AddScoped<IRuleEvaluator, RuleEvaluator>();
 builder.Services.AddScoped<IWatchAggregationService, WatchAggregationService>();
 builder.Services.AddScoped<IMediaExplorerService, MediaExplorerService>();
 
+// In-app Jellyfin session alerts + pre-sweep broadcast warnings (Story 10.2).
+// Singleton because it's invoked from other singletons (WS service, scheduler).
+builder.Services.AddSingleton<IJellyfinSessionAlertService, JellyfinSessionAlertService>();
+
 // Background scheduler — singleton so the controller can trigger manual scans on the same instance.
 builder.Services.AddSingleton<IScanPipeline, ScanPipeline>();
 builder.Services.AddSingleton<SchedulerHostedService>();
@@ -108,6 +112,10 @@ builder.Services.AddSingleton<IPlaystateCache, PlaystateCache>();
 builder.Services.AddSingleton<IPlaybackActivityWriter, PlaybackActivityWriter>();
 builder.Services.AddHostedService<PlaybackPruningWorker>();
 builder.Services.AddHostedService<ExpiredExclusionCleanupWorker>();
+
+// Jellyfin Playback Reporting plugin detection + backfill (Story 10.1).
+builder.Services.AddScoped<IPlaybackReportingService, PlaybackReportingService>();
+builder.Services.AddHostedService<PlaybackReportingBackfillWorker>();
 
 // Channel used to signal JellyfinCurationWarningSyncService when the sweep queue changes.
 // Bounded(1) + DropOldest: multiple rapid writes collapse to a single sync run.

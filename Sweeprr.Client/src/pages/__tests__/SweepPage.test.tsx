@@ -49,6 +49,11 @@ describe('SweepPage Component', () => {
       overBroadMatchPct: 80.0,
       defaultCron: '0 3 * * *',
       allowDirectJellyfinDeletion: false,
+      leavingSoonSyncEnabled: true,
+      posterOverlaysEnabled: false,
+      posterBackupDir: '/config/poster-backups',
+      jellyfinSessionAlertsEnabled: true,
+      preSweepBroadcastEnabled: true,
     })
     vi.mocked(sweepApi.getSummary).mockResolvedValue({
       pendingCount: 2,

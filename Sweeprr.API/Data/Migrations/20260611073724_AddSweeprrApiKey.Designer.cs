@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Sweeprr.API.Data;
 
@@ -10,9 +11,11 @@ using Sweeprr.API.Data;
 namespace Sweeprr.API.Data.Migrations
 {
     [DbContext(typeof(SweeprrDbContext))]
-    partial class SweeprrDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260611073724_AddSweeprrApiKey")]
+    partial class AddSweeprrApiKey
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.16");

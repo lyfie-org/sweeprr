@@ -13,6 +13,8 @@ export interface SettingsDto {
   leavingSoonSyncEnabled: boolean
   posterOverlaysEnabled: boolean
   posterBackupDir: string
+  jellyfinSessionAlertsEnabled: boolean
+  preSweepBroadcastEnabled: boolean
 }
 
 export interface UpdateSettingsRequest {
@@ -30,6 +32,8 @@ export interface UpdateSettingsRequest {
   leavingSoonSyncEnabled?: boolean
   posterOverlaysEnabled?: boolean
   posterBackupDir?: string
+  jellyfinSessionAlertsEnabled?: boolean
+  preSweepBroadcastEnabled?: boolean
 }
 
 export const settingsApi = {

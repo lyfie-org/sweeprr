@@ -22,4 +22,10 @@ public class ConnectionResponse
     public bool AllowInsecure { get; set; }
     public DateTime? LastConnectedAt { get; set; }
     public bool? LastConnectionOk { get; set; }
+
+    /// <summary>
+    /// Jellyfin only: whether the Playback Reporting plugin was detected on the server.
+    /// Null = unknown (not yet checked, or the connection is not a Jellyfin connection).
+    /// </summary>
+    public bool? PlaybackReportingPluginActive { get; set; }
 }

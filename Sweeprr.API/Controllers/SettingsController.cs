@@ -103,6 +103,12 @@ public sealed class SettingsController : ControllerBase
         if (req.PosterBackupDir is not null)
             s.PosterBackupDir = req.PosterBackupDir;
 
+        if (req.JellyfinSessionAlertsEnabled.HasValue)
+            s.JellyfinSessionAlertsEnabled = req.JellyfinSessionAlertsEnabled.Value;
+
+        if (req.PreSweepBroadcastEnabled.HasValue)
+            s.PreSweepBroadcastEnabled = req.PreSweepBroadcastEnabled.Value;
+
         await _db.SaveChangesAsync(ct);
         return Ok(ToDto(s));
     }
@@ -119,7 +125,9 @@ public sealed class SettingsController : ControllerBase
         s.AllowDirectJellyfinDeletion,
         s.LeavingSoonSyncEnabled,
         s.PosterOverlaysEnabled,
-        s.PosterBackupDir);
+        s.PosterBackupDir,
+        s.JellyfinSessionAlertsEnabled,
+        s.PreSweepBroadcastEnabled);
 
     private static bool IsValidCron(string expression)
     {

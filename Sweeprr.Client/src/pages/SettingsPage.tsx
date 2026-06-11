@@ -9,6 +9,7 @@ import {
 import { settingsApi, type SettingsDto, type UpdateSettingsRequest } from '../api/settings'
 import { systemApi } from '../api/system'
 import { ApiError } from '../api/client'
+import { ApiKeysSection } from '../components/settings/ApiKeysSection'
 import {
   Button,
   Card,
@@ -64,6 +65,8 @@ interface FormState {
   leavingSoonSyncEnabled: boolean
   posterOverlaysEnabled: boolean
   posterBackupDir: string
+  jellyfinSessionAlertsEnabled: boolean
+  preSweepBroadcastEnabled: boolean
 }
 
 function settingsToForm(s: SettingsDto): FormState {
@@ -86,6 +89,8 @@ function settingsToForm(s: SettingsDto): FormState {
     leavingSoonSyncEnabled: s.leavingSoonSyncEnabled,
     posterOverlaysEnabled: s.posterOverlaysEnabled,
     posterBackupDir: s.posterBackupDir,
+    jellyfinSessionAlertsEnabled: s.jellyfinSessionAlertsEnabled,
+    preSweepBroadcastEnabled: s.preSweepBroadcastEnabled,
   }
 }
 
@@ -188,6 +193,8 @@ export function SettingsPage() {
       leavingSoonSyncEnabled: form.leavingSoonSyncEnabled,
       posterOverlaysEnabled: form.posterOverlaysEnabled,
       posterBackupDir: form.posterBackupDir.trim() || '/config/poster-backups',
+      jellyfinSessionAlertsEnabled: form.jellyfinSessionAlertsEnabled,
+      preSweepBroadcastEnabled: form.preSweepBroadcastEnabled,
     }
 
     if (form.libCapEnabled) {
@@ -540,6 +547,9 @@ export function SettingsPage() {
           </div>
         )}
 
+        {/* ── API Keys ── */}
+        <ApiKeysSection />
+
         {/* ── Jellyfin Integration ── */}
         <Card>
           <CardBody>
@@ -578,6 +588,22 @@ export function SettingsPage() {
                   </div>
                 </div>
               )}
+
+              <Toggle
+                checked={form.jellyfinSessionAlertsEnabled}
+                onChange={v => setF('jellyfinSessionAlertsEnabled', v)}
+                label="In-app session alerts"
+                description="Send an in-app message to a Jellyfin session when the item it's currently playing is Pending or Approved in the Sweep Queue."
+                disabled={saving}
+              />
+
+              <Toggle
+                checked={form.preSweepBroadcastEnabled}
+                onChange={v => setF('preSweepBroadcastEnabled', v)}
+                label="Pre-sweep broadcast warning"
+                description="Send a broadcast message to all active Jellyfin sessions 10 minutes before each scheduled sweep run."
+                disabled={saving}
+              />
             </div>
           </CardBody>
         </Card>

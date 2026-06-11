@@ -20,6 +20,7 @@ dist/
 *.db-shm
 *.db-wal
 /config/
+.sweeprr-dev-config/
 
 # Environment secrets
 .env

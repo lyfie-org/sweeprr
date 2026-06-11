@@ -20,6 +20,8 @@ export interface ConnectionResponse {
   allowInsecure: boolean
   lastConnectedAt: string | null
   lastConnectionOk: boolean | null
+  /** Jellyfin only: whether the Playback Reporting plugin was detected. Null = unknown. */
+  playbackReportingPluginActive?: boolean | null
 }
 
 export interface ConnectionRequest {

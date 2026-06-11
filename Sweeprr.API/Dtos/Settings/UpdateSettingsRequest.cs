@@ -42,4 +42,16 @@ public sealed class UpdateSettingsRequest
     /// Only relevant when <c>PosterOverlaysEnabled</c> is <c>true</c>.
     /// </summary>
     public string? PosterBackupDir { get; init; }
+
+    /// <summary>
+    /// Enables or disables in-app Jellyfin session alerts for items that are
+    /// Pending/Approved in the Sweep Queue and currently being watched.
+    /// </summary>
+    public bool? JellyfinSessionAlertsEnabled { get; init; }
+
+    /// <summary>
+    /// Enables or disables the broadcast message sent to all active Jellyfin
+    /// sessions 10 minutes before each scheduled sweep run.
+    /// </summary>
+    public bool? PreSweepBroadcastEnabled { get; init; }
 }

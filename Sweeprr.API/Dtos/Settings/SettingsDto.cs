@@ -12,4 +12,6 @@ public sealed record SettingsDto(
     bool AllowDirectJellyfinDeletion,
     bool LeavingSoonSyncEnabled,
     bool PosterOverlaysEnabled,
-    string PosterBackupDir);
+    string PosterBackupDir,
+    bool JellyfinSessionAlertsEnabled,
+    bool PreSweepBroadcastEnabled);

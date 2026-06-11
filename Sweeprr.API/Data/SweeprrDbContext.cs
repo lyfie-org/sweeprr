@@ -15,6 +15,7 @@ public class SweeprrDbContext(DbContextOptions<SweeprrDbContext> options) : DbCo
     public DbSet<Exclusion> Exclusions => Set<Exclusion>();
     public DbSet<TagExclusion> TagExclusions => Set<TagExclusion>();
     public DbSet<PlaybackActivity> PlaybackActivities => Set<PlaybackActivity>();
+    public DbSet<SweeprrApiKey> SweeprrApiKeys => Set<SweeprrApiKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -103,5 +104,10 @@ public class SweeprrDbContext(DbContextOptions<SweeprrDbContext> options) : DbCo
             e.HasIndex(p => p.LastWatched)
                 .HasDatabaseName("IX_PlaybackActivities_LastWatched");
         });
+
+        modelBuilder.Entity<SweeprrApiKey>()
+            .HasIndex(k => k.HashedKey)
+            .IsUnique()
+            .HasDatabaseName("IX_SweeprrApiKeys_HashedKey");
     }
 }

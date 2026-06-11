@@ -214,6 +214,7 @@ public class PlaybackActivityTests : IDisposable
             _serviceProvider.GetRequiredService<IServiceScopeFactory>(),
             cache,
             _serviceProvider.GetRequiredService<IPlaybackActivityWriter>(),
+            new NoOpSessionAlertService(),
             NullLogger<JellyfinWebSocketService>.Instance);
 
         // Load initial state is internal/private, but gets called in ExecuteAsync.
@@ -264,5 +265,14 @@ public class PlaybackActivityTests : IDisposable
 
         public Task<BazarrClient?> CreateBazarrClientAsync(CancellationToken ct = default)
             => Task.FromResult<BazarrClient?>(null);
+    }
+
+    private sealed class NoOpSessionAlertService : Sweeprr.API.Services.IJellyfinSessionAlertService
+    {
+        public Task ProcessSessionsUpdateAsync(
+            int connectionId, IReadOnlyList<JellyfinSession> sessions, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task BroadcastPreSweepWarningAsync(CancellationToken ct = default) => Task.CompletedTask;
     }
 }

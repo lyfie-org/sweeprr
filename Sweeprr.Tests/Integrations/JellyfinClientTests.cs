@@ -482,6 +482,220 @@ public class JellyfinClientTests
             StringComparison.OrdinalIgnoreCase);
     }
 
+    // ── GetPlaybackReportingPluginStatusAsync ────────────────────────────────
+
+    [Fact]
+    public async Task GetPlaybackReportingPluginStatusAsync_200_Returns_True()
+    {
+        var result = await MakeClient(200, "[]").GetPlaybackReportingPluginStatusAsync();
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task GetPlaybackReportingPluginStatusAsync_404_Returns_False()
+    {
+        var result = await MakeClient(404).GetPlaybackReportingPluginStatusAsync();
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task GetPlaybackReportingPluginStatusAsync_500_Returns_Null()
+    {
+        var result = await MakeClient(500).GetPlaybackReportingPluginStatusAsync();
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetPlaybackReportingPluginStatusAsync_Calls_Correct_Path()
+    {
+        var capture = new CapturingHandler(200, "[]");
+        await MakeClient(capture).GetPlaybackReportingPluginStatusAsync();
+        Assert.Contains("/PlaybackReporting/Report/Hourly/User", capture.LastRequestUri ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── GetPlaybackReportBackfillAsync ───────────────────────────────────────
+
+    [Fact]
+    public async Task GetPlaybackReportBackfillAsync_Posts_Correct_Path_And_Body()
+    {
+        var capture = new CapturingHandler(200, """{"colums":[],"results":[]}""");
+        await MakeClient(capture).GetPlaybackReportBackfillAsync();
+
+        Assert.Contains("/user_usage_stats/submit_custom_query", capture.LastRequestUri ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("customQueryString", capture.LastRequestBody ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("replaceUserId", capture.LastRequestBody ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("GROUP BY ItemId, UserId", capture.LastRequestBody ?? string.Empty,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetPlaybackReportBackfillAsync_Parses_Colums_And_Results()
+    {
+        var body = """
+            {
+                "colums": ["ItemId", "UserId", "PlayCount", "LastPlayed"],
+                "results": [
+                    ["item-1", "user-1", 5, "2024-01-15 10:30:00"],
+                    ["item-2", "user-2", 1, "2024-02-20 08:00:00"]
+                ]
+            }
+            """;
+
+        var result = await MakeClient(200, body).GetPlaybackReportBackfillAsync();
+
+        var s = Assert.IsType<HttpResult<IReadOnlyList<PlaybackReportRow>>.Success>(result);
+        Assert.Equal(2, s.Value.Count);
+        Assert.Equal("item-1", s.Value[0].ItemId);
+        Assert.Equal("user-1", s.Value[0].UserId);
+        Assert.Equal(5, s.Value[0].PlayCount);
+        Assert.Equal(2024, s.Value[0].LastPlayed.Year);
+    }
+
+    [Fact]
+    public async Task GetPlaybackReportBackfillAsync_Accepts_Columns_Spelling()
+    {
+        var body = """
+            {
+                "columns": ["ItemId", "UserId", "PlayCount", "LastPlayed"],
+                "results": [["item-1", "user-1", 3, "2024-01-01 00:00:00"]]
+            }
+            """;
+
+        var result = await MakeClient(200, body).GetPlaybackReportBackfillAsync();
+
+        var s = Assert.IsType<HttpResult<IReadOnlyList<PlaybackReportRow>>.Success>(result);
+        Assert.Single(s.Value);
+    }
+
+    [Fact]
+    public async Task GetPlaybackReportBackfillAsync_Empty_Results_Returns_Empty_List()
+    {
+        var body = """{"colums":["ItemId","UserId","PlayCount","LastPlayed"],"results":[]}""";
+
+        var result = await MakeClient(200, body).GetPlaybackReportBackfillAsync();
+
+        var s = Assert.IsType<HttpResult<IReadOnlyList<PlaybackReportRow>>.Success>(result);
+        Assert.Empty(s.Value);
+    }
+
+    [Fact]
+    public async Task GetPlaybackReportBackfillAsync_Missing_Expected_Columns_Returns_Empty()
+    {
+        var body = """{"colums":["Foo","Bar"],"results":[["a","b"]]}""";
+
+        var result = await MakeClient(200, body).GetPlaybackReportBackfillAsync();
+
+        var s = Assert.IsType<HttpResult<IReadOnlyList<PlaybackReportRow>>.Success>(result);
+        Assert.Empty(s.Value);
+    }
+
+    [Fact]
+    public async Task GetPlaybackReportBackfillAsync_Skips_Malformed_Row_Without_Throwing()
+    {
+        var body = """
+            {
+                "colums": ["ItemId", "UserId", "PlayCount", "LastPlayed"],
+                "results": [
+                    ["item-1", "user-1", 5, "2024-01-15 10:30:00"],
+                    ["item-2", "user-2", "not-a-number", "2024-02-20 08:00:00"],
+                    ["item-3", "user-3", 2, "not-a-date"]
+                ]
+            }
+            """;
+
+        var result = await MakeClient(200, body).GetPlaybackReportBackfillAsync();
+
+        var s = Assert.IsType<HttpResult<IReadOnlyList<PlaybackReportRow>>.Success>(result);
+        Assert.Single(s.Value);
+        Assert.Equal("item-1", s.Value[0].ItemId);
+    }
+
+    [Fact]
+    public async Task GetPlaybackReportBackfillAsync_404_Returns_DefinitiveFailure()
+    {
+        var result = await MakeClient(404).GetPlaybackReportBackfillAsync();
+        Assert.True(result.IsNotFound);
+    }
+
+    // ── GetActiveSessionsAsync ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetActiveSessionsAsync_Returns_Sessions_With_NowPlayingItem()
+    {
+        var body = """
+            [
+                {"Id": "session-1", "UserId": "user-1", "NowPlayingItem": {"Id": "item-1"}},
+                {"Id": "session-2", "UserId": "user-2"}
+            ]
+            """;
+
+        var result = await MakeClient(200, body).GetActiveSessionsAsync();
+
+        var s = Assert.IsType<HttpResult<IReadOnlyList<JellyfinSession>>.Success>(result);
+        Assert.Equal(2, s.Value.Count);
+        Assert.Equal("session-1", s.Value[0].Id);
+        Assert.Equal("user-1",    s.Value[0].UserId);
+        Assert.Equal("item-1",    s.Value[0].NowPlayingItemId);
+        Assert.Equal("session-2", s.Value[1].Id);
+        Assert.Null(s.Value[1].NowPlayingItemId);
+    }
+
+    [Fact]
+    public async Task GetActiveSessionsAsync_Empty_Array_Returns_Empty_List()
+    {
+        var result = await MakeClient(200, "[]").GetActiveSessionsAsync();
+        var s = Assert.IsType<HttpResult<IReadOnlyList<JellyfinSession>>.Success>(result);
+        Assert.Empty(s.Value);
+    }
+
+    [Fact]
+    public async Task GetActiveSessionsAsync_Calls_Correct_Path()
+    {
+        var capture = new CapturingHandler(200, "[]");
+        await MakeClient(capture).GetActiveSessionsAsync();
+        Assert.Contains("/Sessions", capture.LastRequestUri ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── SendSessionMessageAsync ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task SendSessionMessageAsync_Posts_Correct_Path_And_Body()
+    {
+        var capture = new CapturingHandler(204, null);
+        await MakeClient(capture).SendSessionMessageAsync(
+            "session-1", "Sweeprr Notice", "Hello", 8000);
+
+        Assert.Contains("/Sessions/session-1/Message", capture.LastRequestUri ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"Header\":\"Sweeprr Notice\"", capture.LastRequestBody ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"Text\":\"Hello\"", capture.LastRequestBody ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"TimeoutMs\":8000", capture.LastRequestBody ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SendSessionMessageAsync_204_Returns_Success()
+    {
+        var result = await MakeClient(204).SendSessionMessageAsync(
+            "session-1", "Sweeprr Notice", "Hello");
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task SendSessionMessageAsync_404_Returns_DefinitiveFailure()
+    {
+        var result = await MakeClient(404).SendSessionMessageAsync(
+            "missing-session", "Sweeprr Notice", "Hello");
+        Assert.True(result.IsNotFound);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static JellyfinClient MakeClient(int statusCode, string? body = null)
@@ -560,6 +774,7 @@ public class JellyfinClientTests
 
         public string? LastRequestUri { get; private set; }
         public string? LastAuthorizationHeader { get; private set; }
+        public string? LastRequestBody { get; private set; }
 
         public CapturingHandler(int code, string? body)
         {
@@ -567,7 +782,7 @@ public class JellyfinClientTests
             _body = body;
         }
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage req, CancellationToken ct)
         {
             LastRequestUri = req.RequestUri?.ToString();
@@ -575,10 +790,13 @@ public class JellyfinClientTests
             if (req.Headers.TryGetValues("Authorization", out var vals))
                 LastAuthorizationHeader = string.Join(", ", vals);
 
+            if (req.Content is not null)
+                LastRequestBody = await req.Content.ReadAsStringAsync(ct);
+
             var r = new HttpResponseMessage(_code);
             if (_body is not null)
                 r.Content = new StringContent(_body, Encoding.UTF8, "application/json");
-            return Task.FromResult(r);
+            return r;
         }
     }
 

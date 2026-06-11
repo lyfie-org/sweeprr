@@ -380,6 +380,12 @@ function ConnCard({ conn, onEdit, onRefresh }: ConnCardProps) {
               <Badge variant="neutral" size="sm">{CONNECTION_TYPE_LABELS[conn.type]}</Badge>
               {!conn.isEnabled && <Badge variant="warning" size="sm">Disabled</Badge>}
               {conn.allowInsecure && <Badge variant="info" size="sm">TLS: self-signed</Badge>}
+              {conn.type === 0 && conn.playbackReportingPluginActive === true && (
+                <Badge variant="success" size="sm">Playback Reporting: Active</Badge>
+              )}
+              {conn.type === 0 && conn.playbackReportingPluginActive === false && (
+                <Badge variant="warning" size="sm">Playback Reporting: Not Detected</Badge>
+              )}
             </div>
           </div>
         </div>
