@@ -30,7 +30,7 @@ namespace Sweeprr.API.Configuration;
 /// </summary>
 public static class HttpClientExtensions
 {
-    private static readonly string[] ServiceTypes = ["Jellyfin", "Radarr", "Sonarr"];
+    private static readonly string[] ServiceTypes = ["Jellyfin", "Radarr", "Sonarr", "Bazarr"];
 
     public static IServiceCollection AddSweeprrHttpClients(this IServiceCollection services)
     {
@@ -41,6 +41,23 @@ public static class HttpClientExtensions
         }
 
         services.AddScoped<IIntegrationClientFactory, IntegrationClientFactory>();
+
+        // "Webhook" — used by notification providers (Story 11.1) to POST to user-supplied
+        // Discord / generic webhook URLs. Deliberately lighter than the *arr pipelines:
+        // each setting points at a different external host, so a shared circuit breaker
+        // would let one broken webhook block delivery to all the others.
+        services.AddHttpClient("Webhook").AddResilienceHandler("Webhook-pipeline", pipeline =>
+        {
+            pipeline.AddTimeout(TimeSpan.FromSeconds(10));
+            pipeline.AddRetry(new HttpRetryStrategyOptions
+            {
+                MaxRetryAttempts = 2,
+                BackoffType = DelayBackoffType.Exponential,
+                UseJitter = true,
+                Delay = TimeSpan.FromSeconds(1),
+                MaxDelay = TimeSpan.FromSeconds(8),
+            });
+        });
 
         return services;
     }

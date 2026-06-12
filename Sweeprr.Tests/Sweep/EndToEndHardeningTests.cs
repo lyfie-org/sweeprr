@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Sweeprr.API.Data;
 using Sweeprr.API.Dtos.Sweep;
 using Sweeprr.API.Integrations;
+using Sweeprr.API.Integrations.Bazarr;
 using Sweeprr.API.Integrations.Jellyfin;
 using Sweeprr.API.Integrations.Matching;
 using Sweeprr.API.Integrations.Radarr;
@@ -298,8 +300,14 @@ public class EndToEndHardeningTests : IDisposable
         var matcher = new MediaMatchingService();
         var failsafe = new FailsafeService();
 
+        var notifications = new NotificationService(
+            Channel.CreateUnbounded<NotificationDispatchRequest>(),
+            NullLogger<NotificationService>.Instance);
+
         var executor = new SweepExecutor(
             db2, clientFactory, matcher, failsafe,
+            new FakeOverlayRenderingService(),
+            notifications,
             NullLogger<SweepExecutor>.Instance);
 
         return (executor, db2);
@@ -395,6 +403,17 @@ public class EndToEndHardeningTests : IDisposable
 
         public Task<SonarrClient?> CreateSonarrClientAsync(int connectionId, CancellationToken ct)
             => Task.FromResult<SonarrClient?>(null);
+
+        public Task<BazarrClient?> CreateBazarrClientAsync(CancellationToken ct = default)
+            => Task.FromResult<BazarrClient?>(null);
+    }
+
+    // ── Fake IOverlayRenderingService ─────────────────────────────────────────
+
+    private sealed class FakeOverlayRenderingService : IOverlayRenderingService
+    {
+        public Task ApplyOverlayAsync(SweepItem item, string labelText, CancellationToken ct) => Task.CompletedTask;
+        public Task RestoreOriginalAsync(SweepItem item, CancellationToken ct) => Task.CompletedTask;
     }
 
     // ── JSON helpers ──────────────────────────────────────────────────────────

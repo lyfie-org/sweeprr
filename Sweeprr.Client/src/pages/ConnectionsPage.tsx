@@ -4,6 +4,7 @@ import {
   Television,
   FilmSlate,
   VideoCamera,
+  Subtitles,
   PlugsConnected,
   CheckCircle,
   XCircle,
@@ -41,12 +42,14 @@ const TYPE_ICONS: Record<ConnectionType, React.ReactNode> = {
   0: <Television size={20} weight="duotone" />,
   1: <FilmSlate size={20} weight="duotone" />,
   2: <VideoCamera size={20} weight="duotone" />,
+  3: <Subtitles size={20} weight="duotone" />,
 }
 
 const TYPE_ICON_CLASS: Record<ConnectionType, string> = {
   0: 'conn-card__icon--jellyfin',
   1: 'conn-card__icon--radarr',
   2: 'conn-card__icon--sonarr',
+  3: 'conn-card__icon--bazarr',
 }
 
 function statusFromConn(conn: ConnectionResponse): 'connected' | 'disconnected' | 'pending' {
@@ -233,6 +236,7 @@ function ConnModal({ editing, onClose, onSaved }: ConnModalProps) {
               <option value={0}>Jellyfin</option>
               <option value={1}>Radarr</option>
               <option value={2}>Sonarr</option>
+              <option value={3}>Bazarr</option>
             </select>
           </div>
           {isEditing && (
@@ -376,6 +380,12 @@ function ConnCard({ conn, onEdit, onRefresh }: ConnCardProps) {
               <Badge variant="neutral" size="sm">{CONNECTION_TYPE_LABELS[conn.type]}</Badge>
               {!conn.isEnabled && <Badge variant="warning" size="sm">Disabled</Badge>}
               {conn.allowInsecure && <Badge variant="info" size="sm">TLS: self-signed</Badge>}
+              {conn.type === 0 && conn.playbackReportingPluginActive === true && (
+                <Badge variant="success" size="sm">Playback Reporting: Active</Badge>
+              )}
+              {conn.type === 0 && conn.playbackReportingPluginActive === false && (
+                <Badge variant="warning" size="sm">Playback Reporting: Not Detected</Badge>
+              )}
             </div>
           </div>
         </div>

@@ -3,12 +3,16 @@ import { AppShell } from './components/layout/AppShell'
 import { ProtectedRoute } from './components/router/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
 import { SetupPage } from './pages/SetupPage'
+import { ExtendPage } from './pages/ExtendPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { SweepPage } from './pages/SweepPage'
+import { MediaPage } from './pages/MediaPage'
 import { RulesPage } from './pages/RulesPage'
 import { ConnectionsPage } from './pages/ConnectionsPage'
+import { ExclusionsPage } from './pages/ExclusionsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LogsPage } from './pages/LogsPage'
+import { SandboxPage } from './pages/SandboxPage'
 import { KitchenSink } from './pages/KitchenSink'
 import './styles/app.css'
 
@@ -18,6 +22,7 @@ const router = createBrowserRouter([
 
   { path: '/login', element: <LoginPage /> },
   { path: '/setup', element: <SetupPage /> },
+  { path: '/extend', element: <ExtendPage /> },
 
   {
     element: <ProtectedRoute />,
@@ -27,10 +32,13 @@ const router = createBrowserRouter([
         children: [
           { index: true,           element: <DashboardPage />   },
           { path: 'sweep',         element: <SweepPage />       },
+          { path: 'media',         element: <MediaPage />       },
           { path: 'rules',         element: <RulesPage />       },
           { path: 'connections',   element: <ConnectionsPage /> },
+          { path: 'exclusions',    element: <ExclusionsPage />  },
           { path: 'settings',      element: <SettingsPage />    },
           { path: 'logs',          element: <LogsPage />        },
+          { path: 'sandbox',       element: <SandboxPage />     },
         ],
       },
     ],

@@ -68,6 +68,24 @@ public sealed class RadarrClient : ClientBase
             (IReadOnlyList<RadarrHistoryRecord>)dtos.Select(ToHistoryRecord).ToList());
     }
 
+    /// <summary>
+    /// Returns disk-space usage for all paths Radarr manages.
+    /// Used to populate <c>DiskFreeSpacePercent</c> / <c>DiskFreeSpaceGb</c> rule fields.
+    /// </summary>
+    public async Task<HttpResult<(double FreePercent, double FreeGb)>> GetDiskSpaceAsync(
+        CancellationToken ct = default)
+    {
+        var result = await GetAsync<List<RadarrDiskSpaceDto>>("/api/v3/diskspace", ct);
+        return result.Map(dtos =>
+        {
+            long totalFree  = dtos.Sum(d => d.FreeSpace);
+            long totalTotal = dtos.Sum(d => d.TotalSpace);
+            double pct = totalTotal > 0 ? (double)totalFree / totalTotal * 100.0 : 0.0;
+            double gb  = totalFree / 1_073_741_824.0;
+            return (pct, gb);
+        });
+    }
+
     public async Task<HttpResult<IReadOnlyList<RadarrQualityProfile>>> GetQualityProfilesAsync(
         CancellationToken ct = default)
     {
@@ -124,6 +142,45 @@ public sealed class RadarrClient : ClientBase
     }
 
     /// <summary>
+    /// Changes the quality profile of a Radarr movie.
+    ///
+    /// Uses a GET-then-PUT round-trip via <see cref="JsonNode"/> so all Radarr fields
+    /// are preserved in the PUT body — only <c>qualityProfileId</c> is mutated.
+    /// </summary>
+    public async Task<HttpResult<EmptyResponse>> UpdateMovieQualityProfileAsync(
+        int id, int profileId, CancellationToken ct = default)
+    {
+        var getResult = await GetAsync<JsonNode?>($"/api/v3/movie/{id}", ct);
+
+        switch (getResult)
+        {
+            case HttpResult<JsonNode?>.TransientFailure t:
+                return HttpResult<EmptyResponse>.Transient(t.Reason, t.Exception);
+
+            case HttpResult<JsonNode?>.DefinitiveFailure d:
+                return HttpResult<EmptyResponse>.Definitive(d.StatusCode, d.Reason);
+
+            case HttpResult<JsonNode?>.Success { Value: JsonObject movieNode }:
+                movieNode["qualityProfileId"] = profileId;
+                var putResult = await PutAsync<EmptyResponse>($"/api/v3/movie/{id}", movieNode, ct);
+                return putResult;
+
+            default:
+                return HttpResult<EmptyResponse>.Transient(
+                    $"Unexpected response shape from Radarr GET /api/v3/movie/{id}");
+        }
+    }
+
+    /// <summary>
+    /// Triggers Radarr to search for a new release matching the current quality profile.
+    /// </summary>
+    public Task<HttpResult<EmptyResponse>> TriggerMovieSearchAsync(
+        int movieId, CancellationToken ct = default)
+        => PostAsync<EmptyResponse>("/api/v3/command",
+            new { name = "MoviesSearch", movieIds = new[] { movieId } },
+            ct);
+
+    /// <summary>
     /// Permanently deletes a movie from Radarr.
     ///
     /// <paramref name="deleteFiles"/> removes the files on disk.
@@ -175,7 +232,8 @@ public sealed class RadarrClient : ClientBase
         d.Path,
         d.Size,
         ParseDate(d.DateAdded),
-        d.ReleaseGroup);
+        d.ReleaseGroup,
+        d.QualityCutoffNotMet);
 
     private static RadarrHistoryRecord ToHistoryRecord(RadarrHistoryRecordDto d) => new(
         d.Id,

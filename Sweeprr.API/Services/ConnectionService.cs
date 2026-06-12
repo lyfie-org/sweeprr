@@ -11,9 +11,9 @@ public class ConnectionService : IConnectionService
     private readonly SweeprrDbContext _db;
     private readonly ISecretProtector _protector;
 
-    // ExtraJson schema: {"allowInsecure": bool}
+    // ExtraJson schema: {"allowInsecure": bool, "playbackReportingPluginActive": bool?}
     // Kept minimal now; Sprint 2 adds jellyfinUserId, jellyfinDeviceId, etc.
-    private record ConnectionExtras(bool AllowInsecure = false);
+    private record ConnectionExtras(bool AllowInsecure = false, bool? PlaybackReportingPluginActive = null);
 
     private static readonly JsonSerializerOptions _jsonOpts =
         new() { PropertyNameCaseInsensitive = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -118,6 +118,16 @@ public class ConnectionService : IConnectionService
         await _db.SaveChangesAsync();
     }
 
+    public async Task SetPlaybackReportingPluginStatusAsync(int id, bool? active, CancellationToken ct = default)
+    {
+        var conn = await _db.ServerConnections.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (conn is null) return;
+
+        var extras = DeserializeExtras(conn.ExtraJson);
+        conn.ExtraJson = SerializeExtras(extras with { PlaybackReportingPluginActive = active });
+        await _db.SaveChangesAsync(ct);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private ConnectionResponse ToResponse(ServerConnection conn)
@@ -138,7 +148,8 @@ public class ConnectionService : IConnectionService
             IsEnabled = conn.IsEnabled,
             AllowInsecure = extras.AllowInsecure,
             LastConnectedAt = conn.LastConnectedAt,
-            LastConnectionOk = conn.LastConnectionOk
+            LastConnectionOk = conn.LastConnectionOk,
+            PlaybackReportingPluginActive = extras.PlaybackReportingPluginActive
         };
     }
 

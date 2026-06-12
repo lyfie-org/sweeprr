@@ -7,4 +7,5 @@ public sealed record RadarrMovieFile(
     string?          Path,
     long?            Size,
     DateTimeOffset?  DateAdded,
-    string?          ReleaseGroup);
+    string?          ReleaseGroup,
+    bool?            QualityCutoffNotMet);

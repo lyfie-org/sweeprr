@@ -20,6 +20,18 @@ public static class RuleFieldMeta
     private static readonly IReadOnlySet<MediaType> AllMediaTypes = MSet(
         MediaType.Movie, MediaType.Series, MediaType.Season, MediaType.Episode);
 
+    private static readonly IReadOnlySet<MediaType> TvMediaTypes = MSet(
+        MediaType.Series, MediaType.Season, MediaType.Episode);
+
+    private static readonly IReadOnlySet<MediaType> SeasonEpisodeTypes = MSet(
+        MediaType.Season, MediaType.Episode);
+
+    private static readonly IReadOnlySet<MediaType> MovieEpisodeTypes = MSet(
+        MediaType.Movie, MediaType.Episode);
+
+    private static readonly IReadOnlySet<MediaType> MovieSeriesTypes = MSet(
+        MediaType.Movie, MediaType.Series);
+
     // ── Comparator groups ────────────────────────────────────────────────────
 
     private static readonly IReadOnlySet<RuleComparator> NumericComparators = CSet(
@@ -60,14 +72,28 @@ public static class RuleFieldMeta
         [RuleField.ReleaseDate]       = new(RuleValueType.Date,     AllMediaTypes, DateComparators),
         [RuleField.DateAdded]         = new(RuleValueType.Date,     AllMediaTypes, DateComparators),
         [RuleField.Rating]            = new(RuleValueType.Number,   AllMediaTypes, NumericComparators),
-        [RuleField.Genre]             = new(RuleValueType.Text,     AllMediaTypes, TextComparators),
+        [RuleField.Genre]             = new(RuleValueType.TextList, AllMediaTypes, TextListComparators),
         [RuleField.ResolutionHeight]  = new(RuleValueType.Number,   AllMediaTypes, NumericComparators),
+        [RuleField.VideoCodec]        = new(RuleValueType.Text,     AllMediaTypes, TextComparators),
+        [RuleField.AudioChannels]     = new(RuleValueType.Number,   AllMediaTypes, NumericComparators),
 
         // *arr
-        [RuleField.Monitored]         = new(RuleValueType.Bool,     AllMediaTypes, BoolComparators),
-        [RuleField.Tags]              = new(RuleValueType.TextList, AllMediaTypes, TextListComparators),
-        [RuleField.QualityProfile]    = new(RuleValueType.Text,     AllMediaTypes, TextComparators),
-        [RuleField.FileSizeGb]        = new(RuleValueType.Number,   AllMediaTypes, NumericComparators),
+        [RuleField.Monitored]         = new(RuleValueType.Bool,     AllMediaTypes,      BoolComparators),
+        [RuleField.Tags]              = new(RuleValueType.TextList, AllMediaTypes,      TextListComparators),
+        [RuleField.QualityProfile]    = new(RuleValueType.Text,     AllMediaTypes,      TextComparators),
+        [RuleField.FileSizeGb]        = new(RuleValueType.Number,   AllMediaTypes,      NumericComparators),
+
+        // TV-specific
+        [RuleField.SeriesEnded]       = new(RuleValueType.Bool,     TvMediaTypes,       BoolComparators),
+        [RuleField.IsFinale]          = new(RuleValueType.Bool,     SeasonEpisodeTypes, BoolComparators),
+        [RuleField.CutoffMet]         = new(RuleValueType.Bool,     MovieEpisodeTypes,  BoolComparators),
+
+        // Multi-instance
+        [RuleField.HasComplementaryCopy] = new(RuleValueType.Bool,  MovieSeriesTypes,   BoolComparators),
+
+        // Disk space
+        [RuleField.DiskFreeSpacePercent] = new(RuleValueType.Number, AllMediaTypes, NumericComparators),
+        [RuleField.DiskFreeSpaceGb]      = new(RuleValueType.Number, AllMediaTypes, NumericComparators),
     };
 
     // ── Comparator → expected ValueType ─────────────────────────────────────

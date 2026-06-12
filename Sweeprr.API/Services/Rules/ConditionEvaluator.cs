@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using Sweeprr.API.Models;
 
 namespace Sweeprr.API.Services.Rules;
@@ -115,10 +116,15 @@ internal static class ConditionEvaluator
 
     private static bool EvaluateContains(object actual, string ruleValue)
     {
+        if (string.IsNullOrEmpty(ruleValue))
+            return false;
+
+        var parts = ruleValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
         if (actual is IReadOnlyList<string> list)
-            return list.Any(t => string.Equals(t, ruleValue, StringComparison.OrdinalIgnoreCase));
+            return list.Any(t => parts.Contains(t, StringComparer.OrdinalIgnoreCase));
         if (actual is string s)
-            return s.Contains(ruleValue, StringComparison.OrdinalIgnoreCase);
+            return parts.Any(p => s.Contains(p, StringComparison.OrdinalIgnoreCase));
         return false;
     }
 

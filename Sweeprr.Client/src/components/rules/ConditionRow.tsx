@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Trash } from '@phosphor-icons/react'
 import {
   type FieldDescriptor,
@@ -8,8 +9,12 @@ import {
   VALUELESS_COMPARATORS,
   inferValueType,
 } from '../../api/rules'
-import { Toggle } from '../ui'
+import { connectionsApi, type DiskSpaceDto } from '../../api/connections'
 import { TagMultiselect } from './TagMultiselect'
+import { GenreMultiselect } from './GenreMultiselect'
+import { Toggle } from '../ui';
+
+const DISK_FIELDS = new Set(['DiskFreeSpacePercent', 'DiskFreeSpaceGb'])
 
 interface ConditionRowProps {
   condition: RuleConditionDto
@@ -32,6 +37,20 @@ export function ConditionRow({
   disabled,
 }: ConditionRowProps) {
   const currentField = fields.find(f => f.field === condition.field)
+
+  // Disk space helper text — fetch once per connection when a disk field is selected
+  const [diskStats, setDiskStats] = useState<DiskSpaceDto | null>(null)
+  useEffect(() => {
+    if (!DISK_FIELDS.has(condition.field) || arrConnectionId === null) {
+      setDiskStats(null)
+      return
+    }
+    let cancelled = false
+    connectionsApi.getDiskSpace(arrConnectionId)
+      .then(d => { if (!cancelled) setDiskStats(d) })
+      .catch(() => { if (!cancelled) setDiskStats(null) })
+    return () => { cancelled = true }
+  }, [condition.field, arrConnectionId])
 
   function handleFieldChange(newField: string) {
     const fieldMeta = fields.find(f => f.field === newField)
@@ -137,6 +156,12 @@ export function ConditionRow({
       {/* Value control — dynamic by valueType */}
       <div className="condition-row__value">
         {!isValueless && renderValueControl()}
+        {DISK_FIELDS.has(condition.field) && diskStats !== null && (
+          <span className="condition-row__disk-hint">
+            Current: {diskStats.freePercent}% free
+            ({diskStats.freeSpaceGb} GB of {diskStats.totalSpaceGb} GB)
+          </span>
+        )}
       </div>
 
       {/* Remove button */}
@@ -190,6 +215,24 @@ export function ConditionRow({
           </div>
         )
       case 'Number':
+        if (condition.field === 'ResolutionHeight') {
+          return (
+            <div className="condition-row__select-wrap">
+              <select
+                className="condition-row__select"
+                value={condition.value}
+                onChange={e => handleValueChange(e.target.value)}
+                disabled={disabled}
+              >
+                <option value="">Select resolution...</option>
+                <option value="2160">4K (2160p)</option>
+                <option value="1080">1080p</option>
+                <option value="720">720p</option>
+                <option value="480">480p</option>
+              </select>
+            </div>
+          )
+        }
         return (
           <input
             type="number"
@@ -201,6 +244,15 @@ export function ConditionRow({
           />
         )
       case 'TextList':
+        if (condition.field === 'Genre') {
+          return (
+            <GenreMultiselect
+              value={tagValues}
+              onChange={handleTagsChange}
+              disabled={disabled}
+            />
+          )
+        }
         return (
           <TagMultiselect
             connectionId={arrConnectionId}

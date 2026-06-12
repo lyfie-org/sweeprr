@@ -1,6 +1,8 @@
+using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Sweeprr.API.Data;
 using Sweeprr.API.Dtos.Sweep;
 using Sweeprr.API.Models;
@@ -333,7 +335,19 @@ public class SweepQueueServiceTests : IDisposable
         var db = new SweeprrDbContext(options);
         db.Database.Migrate();
 
-        return (new SweepQueueService(db), db);
+        var channel = Channel.CreateUnbounded<byte>();
+        var overlay = new FakeOverlayRenderingService();
+        var notifications = new NotificationService(
+            Channel.CreateUnbounded<NotificationDispatchRequest>(),
+            NullLogger<NotificationService>.Instance);
+
+        return (new SweepQueueService(db, channel, overlay, notifications), db);
+    }
+
+    private sealed class FakeOverlayRenderingService : IOverlayRenderingService
+    {
+        public Task ApplyOverlayAsync(SweepItem item, string labelText, CancellationToken ct) => Task.CompletedTask;
+        public Task RestoreOriginalAsync(SweepItem item, CancellationToken ct) => Task.CompletedTask;
     }
 
     private static async Task<RuleGroup> SeedGroupAsync(SweeprrDbContext db, string name = "Test Group")

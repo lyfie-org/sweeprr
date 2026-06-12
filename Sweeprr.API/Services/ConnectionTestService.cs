@@ -66,6 +66,7 @@ public class ConnectionTestService : IConnectionTestService
             ConnectionType.Jellyfin => await TestJellyfinAsync(client, baseUrl, apiKey),
             ConnectionType.Radarr => await TestArrAsync(client, baseUrl, apiKey, "Radarr"),
             ConnectionType.Sonarr => await TestArrAsync(client, baseUrl, apiKey, "Sonarr"),
+            ConnectionType.Bazarr => await TestBazarrAsync(client, baseUrl, apiKey),
             _ => ConnectionTestResult.Fail($"Unknown connection type '{type}'.")
         };
     }
@@ -101,6 +102,26 @@ public class ConnectionTestService : IConnectionTestService
             var appName = resp.GetProperty("appName").GetString() ?? expectedAppName;
             var version = resp.GetProperty("version").GetString();
             return (appName, version);
+        });
+    }
+
+    private async Task<ConnectionTestResult> TestBazarrAsync(
+        HttpClient client, string baseUrl, string apiKey)
+    {
+        var url = $"{baseUrl.TrimEnd('/')}/api/system/status";
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.TryAddWithoutValidation("X-API-KEY", apiKey);
+
+        return await ExecuteTestAsync(client, request, resp =>
+        {
+            // bazarr_version is the canonical field; fall back to generic "version" if absent.
+            string? version = null;
+            if (resp.TryGetProperty("bazarr_version", out var bv))
+                version = bv.GetString();
+            else if (resp.TryGetProperty("version", out var v))
+                version = v.GetString();
+
+            return ("Bazarr", version);
         });
     }
 

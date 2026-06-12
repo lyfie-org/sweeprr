@@ -5,7 +5,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sweeprr.API.Background;
 using Sweeprr.API.Data;
+using Sweeprr.API.Integrations.Jellyfin.Models;
 using Sweeprr.API.Models;
+using Sweeprr.API.Services;
 
 namespace Sweeprr.Tests.Background;
 
@@ -225,6 +227,46 @@ public class SchedulerHostedServiceTests : IDisposable
         Assert.Equal(0, pipeline.ExecutionCount);
     }
 
+    // ── Pre-sweep broadcast ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ForceCheckPreSweepAsync_ScheduleWithinWindow_SendsBroadcast()
+    {
+        var (service, pipeline, _) = CreateService(out var sessionAlerts);
+        // "* * * * *" always fires within the next 60s — well inside the 10-minute window
+        await SeedGroupAsync(pipeline.ScopeFactory, "Imminent Group", "* * * * *");
+
+        await service.ForceReloadAsync();
+        await service.ForceCheckPreSweepAsync();
+
+        Assert.Equal(1, sessionAlerts.BroadcastCount);
+    }
+
+    [Fact]
+    public async Task ForceCheckPreSweepAsync_DoesNotResend_OnRepeatedTicks()
+    {
+        var (service, pipeline, _) = CreateService(out var sessionAlerts);
+        await SeedGroupAsync(pipeline.ScopeFactory, "Imminent Group", "* * * * *");
+
+        await service.ForceReloadAsync();
+        await service.ForceCheckPreSweepAsync();
+        await service.ForceCheckPreSweepAsync();
+        await service.ForceCheckPreSweepAsync();
+
+        Assert.Equal(1, sessionAlerts.BroadcastCount);
+    }
+
+    [Fact]
+    public async Task ForceCheckPreSweepAsync_NoSchedules_SendsNothing()
+    {
+        var (service, _, _) = CreateService(out var sessionAlerts);
+
+        await service.ForceReloadAsync();
+        await service.ForceCheckPreSweepAsync();
+
+        Assert.Equal(0, sessionAlerts.BroadcastCount);
+    }
+
     // ── CronValidationException ─────────────────────────────────────────────
 
     [Fact]
@@ -240,7 +282,10 @@ public class SchedulerHostedServiceTests : IDisposable
     // ═══════════════════════════════════════════════════════════════════════════
 
     private (SchedulerHostedService Service, FakeScanPipeline Pipeline, IServiceScopeFactory ScopeFactory)
-        CreateService()
+        CreateService() => CreateService(out _);
+
+    private (SchedulerHostedService Service, FakeScanPipeline Pipeline, IServiceScopeFactory ScopeFactory)
+        CreateService(out FakeSessionAlertService sessionAlerts)
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"sweeprr_sched_{Guid.NewGuid()}.db");
         _dbPaths.Add(dbPath);
@@ -270,10 +315,12 @@ public class SchedulerHostedServiceTests : IDisposable
 
         var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
         var pipeline = new FakeScanPipeline(scopeFactory);
+        sessionAlerts = new FakeSessionAlertService();
 
         var service = new SchedulerHostedService(
             scopeFactory,
             pipeline,
+            sessionAlerts,
             NullLogger<SchedulerHostedService>.Instance);
 
         return (service, pipeline, scopeFactory);
@@ -296,6 +343,21 @@ public class SchedulerHostedServiceTests : IDisposable
         db.RuleGroups.Add(group);
         await db.SaveChangesAsync();
         return group;
+    }
+
+    private sealed class FakeSessionAlertService : IJellyfinSessionAlertService
+    {
+        public int BroadcastCount;
+
+        public Task ProcessSessionsUpdateAsync(
+            int connectionId, IReadOnlyList<JellyfinSession> sessions, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task BroadcastPreSweepWarningAsync(CancellationToken ct = default)
+        {
+            Interlocked.Increment(ref BroadcastCount);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeScanPipeline : IScanPipeline

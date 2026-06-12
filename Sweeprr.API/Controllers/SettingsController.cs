@@ -91,6 +91,27 @@ public sealed class SettingsController : ControllerBase
             s.OverBroadMatchPct = req.OverBroadMatchPct.Value;
         }
 
+        if (req.AllowDirectJellyfinDeletion.HasValue)
+            s.AllowDirectJellyfinDeletion = req.AllowDirectJellyfinDeletion.Value;
+
+        if (req.LeavingSoonSyncEnabled.HasValue)
+            s.LeavingSoonSyncEnabled = req.LeavingSoonSyncEnabled.Value;
+
+        if (req.PosterOverlaysEnabled.HasValue)
+            s.PosterOverlaysEnabled = req.PosterOverlaysEnabled.Value;
+
+        if (req.PosterBackupDir is not null)
+            s.PosterBackupDir = req.PosterBackupDir;
+
+        if (req.JellyfinSessionAlertsEnabled.HasValue)
+            s.JellyfinSessionAlertsEnabled = req.JellyfinSessionAlertsEnabled.Value;
+
+        if (req.PreSweepBroadcastEnabled.HasValue)
+            s.PreSweepBroadcastEnabled = req.PreSweepBroadcastEnabled.Value;
+
+        if (req.PublicBaseUrl is not null)
+            s.PublicBaseUrl = string.IsNullOrWhiteSpace(req.PublicBaseUrl) ? null : req.PublicBaseUrl.TrimEnd('/');
+
         await _db.SaveChangesAsync(ct);
         return Ok(ToDto(s));
     }
@@ -103,7 +124,14 @@ public sealed class SettingsController : ControllerBase
         s.MaxGbPerRun,
         s.PessimisticSizeGb,
         s.LibraryPercentCap,
-        s.OverBroadMatchPct);
+        s.OverBroadMatchPct,
+        s.AllowDirectJellyfinDeletion,
+        s.LeavingSoonSyncEnabled,
+        s.PosterOverlaysEnabled,
+        s.PosterBackupDir,
+        s.JellyfinSessionAlertsEnabled,
+        s.PreSweepBroadcastEnabled,
+        s.PublicBaseUrl);
 
     private static bool IsValidCron(string expression)
     {

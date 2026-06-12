@@ -8,4 +8,11 @@ public sealed record SettingsDto(
     double MaxGbPerRun,
     double PessimisticSizeGb,
     double? LibraryPercentCap,
-    double? OverBroadMatchPct);
+    double? OverBroadMatchPct,
+    bool AllowDirectJellyfinDeletion,
+    bool LeavingSoonSyncEnabled,
+    bool PosterOverlaysEnabled,
+    string PosterBackupDir,
+    bool JellyfinSessionAlertsEnabled,
+    bool PreSweepBroadcastEnabled,
+    string? PublicBaseUrl);

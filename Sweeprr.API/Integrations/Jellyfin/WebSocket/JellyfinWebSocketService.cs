@@ -1,7 +1,12 @@
+using System.Collections.Concurrent;
+using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
+using Sweeprr.API.Data;
+using Sweeprr.API.Integrations.Jellyfin.Dto;
 using Sweeprr.API.Integrations.Jellyfin.Models;
 using Sweeprr.API.Models;
 using Sweeprr.API.Services;
@@ -55,12 +60,21 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
     private volatile WsConnectionState _state = WsConnectionState.Disconnected;
     private DateTimeOffset? _lastConnectedAt;
 
+    // Set once a ConnectionError notification has fired for the current outage;
+    // reset on the next successful connect so a fresh outage can notify again.
+    private volatile bool _connectionErrorNotified;
+
     // Updated from ForceKeepAlive messages; read by the keep-alive loop
     private volatile int _keepAliveInterval = 30;
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IPlaystateCache      _cache;
+    private readonly IPlaybackActivityWriter _writer;
+    private readonly IJellyfinSessionAlertService _sessionAlerts;
     private readonly ILogger<JellyfinWebSocketService> _logger;
+
+    private readonly ConcurrentDictionary<string, string> _userIdToUsernameMap = new(StringComparer.OrdinalIgnoreCase);
+    private DateTime? _lastPrunedAt;
 
     public WsConnectionState State            => _state;
     public DateTimeOffset?   LastConnectedAt  => _lastConnectedAt;
@@ -68,21 +82,31 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
     public JellyfinWebSocketService(
         IServiceScopeFactory scopeFactory,
         IPlaystateCache      cache,
+        IPlaybackActivityWriter writer,
+        IJellyfinSessionAlertService sessionAlerts,
         ILogger<JellyfinWebSocketService> logger)
     {
-        _scopeFactory = scopeFactory;
-        _cache        = cache;
-        _logger       = logger;
+        _scopeFactory  = scopeFactory;
+        _cache         = cache;
+        _writer        = writer;
+        _sessionAlerts = sessionAlerts;
+        _logger        = logger;
     }
 
     // ── BackgroundService entry point ────────────────────────────────────────
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await LoadInitialStateAsync(stoppingToken).ConfigureAwait(false);
+
         var backoffIndex = 0;
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            if (_lastPrunedAt == null || DateTime.UtcNow - _lastPrunedAt.Value > TimeSpan.FromDays(1))
+            {
+                _ = Task.Run(() => PruneActivitiesAsync(stoppingToken), stoppingToken);
+            }
             var conn = await GetJellyfinConnectionAsync(stoppingToken).ConfigureAwait(false);
 
             if (conn is null)
@@ -105,9 +129,10 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
 
                 await ws.ConnectAsync(wsUri, stoppingToken).ConfigureAwait(false);
 
-                _state           = WsConnectionState.Connected;
-                _lastConnectedAt = DateTimeOffset.UtcNow;
-                backoffIndex     = 0;
+                _state                    = WsConnectionState.Connected;
+                _lastConnectedAt          = DateTimeOffset.UtcNow;
+                backoffIndex              = 0;
+                _connectionErrorNotified  = false;
 
                 _logger.LogInformation("Jellyfin WebSocket connected.");
 
@@ -157,6 +182,12 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
             _logger.LogInformation(
                 "Jellyfin WebSocket: reconnecting in {Seconds}s (attempt {Attempt})…",
                 (int)delay.TotalSeconds, backoffIndex);
+
+            if (backoffIndex >= BackoffDelays.Length && !_connectionErrorNotified)
+            {
+                _connectionErrorNotified = true;
+                NotifyConnectionError(backoffIndex);
+            }
 
             await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
         }
@@ -232,6 +263,11 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
                     HandlePlaybackStop(message.Data.Value, connectionId, ct);
                 break;
 
+            case "Sessions":
+                if (message.Data.HasValue)
+                    HandleSessionsMessage(message.Data.Value, connectionId, ct);
+                break;
+
             default:
                 _logger.LogDebug(
                     "Jellyfin WS: ignoring message type '{Type}'", message.MessageType);
@@ -276,16 +312,19 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
             || changed.UserDataList is not { Length: > 0 })
             return;
 
+        _userIdToUsernameMap.TryGetValue(changed.UserId, out var username);
+        username ??= changed.UserId;
+
         foreach (var item in changed.UserDataList)
         {
-            _cache.Upsert(
-                item.ItemId,
-                changed.UserId,
-                new JellyfinUserData(
-                    Played:                item.Played,
-                    PlayCount:             item.PlayCount,
-                    PlaybackPositionTicks: item.PlaybackPositionTicks,
-                    LastPlayedDate:        item.LastPlayedDate));
+            var userData = new JellyfinUserData(
+                Played:                item.Played,
+                PlayCount:             item.PlayCount,
+                PlaybackPositionTicks: item.PlaybackPositionTicks,
+                LastPlayedDate:        item.LastPlayedDate);
+
+            _cache.Upsert(item.ItemId, changed.UserId, userData);
+            _writer.Enqueue(item.ItemId, changed.UserId, userData, username);
 
             _logger.LogDebug(
                 "Playstate updated via WS: item={ItemId} user={UserId} played={Played}",
@@ -313,6 +352,42 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
         _ = RefetchUserDataAsync(connectionId, itemId, userId, ct);
     }
 
+    internal void HandleSessionsMessage(JsonElement data, int connectionId, CancellationToken ct)
+    {
+        JellyfinSessionDto[]? sessions;
+
+        try { sessions = data.Deserialize<JellyfinSessionDto[]>(JsonOpts); }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to deserialize Sessions payload.");
+            return;
+        }
+
+        if (sessions is not { Length: > 0 }) return;
+
+        var mapped = Array.ConvertAll(sessions, JellyfinSession.From);
+        _ = ProcessSessionAlertsAsync(connectionId, mapped, ct);
+    }
+
+    /// <summary>
+    /// Forwards a "Sessions" WS push to <see cref="IJellyfinSessionAlertService"/>.
+    /// Wrapped here (in addition to the service's own internal guards) so that an
+    /// unexpected exception can never take down the WS message loop.
+    /// </summary>
+    private async Task ProcessSessionAlertsAsync(
+        int connectionId, IReadOnlyList<JellyfinSession> sessions, CancellationToken ct)
+    {
+        try
+        {
+            await _sessionAlerts.ProcessSessionsUpdateAsync(connectionId, sessions, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to process Sessions update for session alerts.");
+        }
+    }
+
     // ── REST re-fetch on PlaybackStop ────────────────────────────────────────
 
     private async Task RefetchUserDataAsync(
@@ -337,6 +412,11 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
             if (result is HttpResult<JellyfinUserData>.Success { Value: var ud })
             {
                 _cache.Upsert(itemId, userId, ud);
+                
+                _userIdToUsernameMap.TryGetValue(userId, out var username);
+                username ??= userId;
+                _writer.Enqueue(itemId, userId, ud, username);
+
                 _logger.LogDebug(
                     "PlaybackStop: refreshed user data for item={ItemId} user={UserId}",
                     itemId, userId);
@@ -406,6 +486,11 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
             }
 
             var users        = usersOk.Value;
+            foreach (var user in users)
+            {
+                _userIdToUsernameMap[user.Id] = user.Name;
+            }
+
             var totalUpdated = 0;
 
             foreach (var user in users)
@@ -484,6 +569,36 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
         finally
         {
             _sendLock.Release();
+        }
+    }
+
+    // ── Notifications ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Fires a ConnectionError notification after repeated reconnect failures.
+    /// Resolved from a fresh scope since this service is a singleton and
+    /// <see cref="INotificationService"/> is scoped. Failures are logged only.
+    /// </summary>
+    private void NotifyConnectionError(int failedAttempts)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var notifications = scope.ServiceProvider.GetRequiredService<INotificationService>();
+
+            notifications.Notify(NotificationTrigger.ConnectionError, new NotificationPayload(
+                NotificationTrigger.ConnectionError,
+                "🔌 Jellyfin Connection Lost",
+                [
+                    ("Status", "Unable to reconnect to the Jellyfin WebSocket after repeated attempts."),
+                    ("Failed Attempts", failedAttempts.ToString()),
+                ],
+                new { service = "Jellyfin", failedAttempts },
+                DateTimeOffset.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to dispatch connection-error notification.");
         }
     }
 
@@ -566,5 +681,54 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
         }
 
         return ws;
+    }
+
+    private async Task LoadInitialStateAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SweeprrDbContext>();
+
+            var activities = await db.PlaybackActivities
+                .AsNoTracking()
+                .ToListAsync(ct)
+                .ConfigureAwait(false);
+
+            var entries = activities.Select(a => (
+                a.MediaServerItemId,
+                a.UserId,
+                new JellyfinUserData(a.IsFinished, a.LastWatched, a.PlayCount, a.PlaybackPositionTicks)
+            ));
+
+            _cache.BulkUpsert(entries);
+
+            foreach (var act in activities)
+            {
+                if (!string.IsNullOrEmpty(act.Username))
+                {
+                    _userIdToUsernameMap[act.UserId] = act.Username;
+                }
+            }
+
+            _logger.LogInformation("Loaded {Count} playback activity records from database on boot.", activities.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load initial playback activities from database.");
+        }
+    }
+
+    private async Task PruneActivitiesAsync(CancellationToken ct)
+    {
+        try
+        {
+            _lastPrunedAt = DateTime.UtcNow;
+            await _writer.PruneOldActivitiesAsync(365, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to prune old playback activities.");
+        }
     }
 }

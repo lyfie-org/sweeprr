@@ -10,6 +10,8 @@ public class RuleGroup
     public string? CronOverride { get; set; }
     public SweepAction Action { get; set; } = SweepAction.DeleteAndUnmonitor;
     public bool AddImportExclusion { get; set; } = false;
+    public int? TargetQualityProfileId { get; set; }
+    public string? TargetQualityProfileName { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

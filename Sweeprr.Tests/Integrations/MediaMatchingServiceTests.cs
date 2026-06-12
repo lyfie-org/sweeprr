@@ -528,6 +528,7 @@ public class MediaMatchingServiceTests
             Tags: [],
             Path: $"/tv/{id}",
             Added: DateTimeOffset.UtcNow,
+            Ended: false,
             Seasons: seasonList);
     }
 }

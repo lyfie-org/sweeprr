@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Background;
@@ -108,6 +109,7 @@ public sealed class SweepController : ControllerBase
     /// Executes the sweep process for all approved items.
     /// </summary>
     [HttpPost("execute")]
+    [Authorize(Policy = "ExecuteSweep")]
     [ProducesResponseType(typeof(ExecuteSweepResult), StatusCodes.Status200OK)]
     public async Task<IActionResult> Execute([FromBody] ExecuteSweepRequest? body, CancellationToken ct)
     {
@@ -121,6 +123,7 @@ public sealed class SweepController : ControllerBase
     /// Manually runs rule evaluation to populate the sweep queue.
     /// </summary>
     [HttpPost("run")]
+    [Authorize(Policy = "ExecuteSweep")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]

@@ -15,7 +15,7 @@ namespace Sweeprr.API.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.16");
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.17");
 
             modelBuilder.Entity("Sweeprr.API.Models.ActivityLog", b =>
                 {
@@ -59,6 +59,12 @@ namespace Sweeprr.API.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("MediaServerItemId")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -66,10 +72,15 @@ namespace Sweeprr.API.Data.Migrations
                     b.Property<string>("Reason")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("RuleGroupId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MediaServerItemId")
                         .HasDatabaseName("IX_Exclusions_MediaServerItemId");
+
+                    b.HasIndex("RuleGroupId");
 
                     b.ToTable("Exclusions");
                 });
@@ -78,6 +89,9 @@ namespace Sweeprr.API.Data.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AllowDirectJellyfinDeletion")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("DefaultCron")
@@ -91,9 +105,18 @@ namespace Sweeprr.API.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("JellyfinSessionAlertsEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("JwtSecret")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("LeavingSoonCollectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("LeavingSoonSyncEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.Property<double?>("LibraryPercentCap")
                         .HasColumnType("REAL");
@@ -110,12 +133,115 @@ namespace Sweeprr.API.Data.Migrations
                     b.Property<double>("PessimisticSizeGb")
                         .HasColumnType("REAL");
 
+                    b.Property<int>("PlaybackHistoryRetentionDays")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PosterBackupDir")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("PosterOverlaysEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("PreSweepBroadcastEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PublicBaseUrl")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("GlobalSettings", t =>
                         {
                             t.HasCheckConstraint("CK_GlobalSettings_SingleRow", "Id = 1");
                         });
+                });
+
+            modelBuilder.Entity("Sweeprr.API.Models.NotificationSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProviderType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("TriggerOnConnectionError")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("TriggerOnFailsafe")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("TriggerOnPendingItems")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("TriggerOnSweepComplete")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("WebhookUrlEncrypted")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("NotificationSettings");
+                });
+
+            modelBuilder.Entity("Sweeprr.API.Models.PlaybackActivity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsFinished")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastWatched")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MediaServerItemId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PlayCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("PlaybackPositionTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("ProgressPercent")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastWatched")
+                        .HasDatabaseName("IX_PlaybackActivities_LastWatched");
+
+                    b.HasIndex("MediaServerItemId", "UserId")
+                        .HasDatabaseName("IX_PlaybackActivities_MediaServerItemId_UserId");
+
+                    b.ToTable("PlaybackActivities");
                 });
 
             modelBuilder.Entity("Sweeprr.API.Models.Rule", b =>
@@ -184,6 +310,12 @@ namespace Sweeprr.API.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("TargetQualityProfileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TargetQualityProfileName")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
@@ -239,7 +371,13 @@ namespace Sweeprr.API.Data.Migrations
                     b.Property<int?>("ArrInstanceId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("AudioChannels")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("FlaggedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Genres")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ImdbId")
@@ -253,6 +391,9 @@ namespace Sweeprr.API.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("MediaType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ResolutionHeight")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("RuleGroupId")
@@ -283,6 +424,9 @@ namespace Sweeprr.API.Data.Migrations
                     b.Property<string>("TvdbId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("VideoCodec")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Status")
@@ -295,6 +439,82 @@ namespace Sweeprr.API.Data.Migrations
                         .HasDatabaseName("IX_SweepItems_GroupStatus");
 
                     b.ToTable("SweepItems");
+                });
+
+            modelBuilder.Entity("Sweeprr.API.Models.SweeprrApiKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HashedKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MaskedKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Scopes")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HashedKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_SweeprrApiKeys_HashedKey");
+
+                    b.ToTable("SweeprrApiKeys");
+                });
+
+            modelBuilder.Entity("Sweeprr.API.Models.TagExclusion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("RuleGroupId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ServerConnectionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TagId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TagName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RuleGroupId");
+
+                    b.HasIndex("ServerConnectionId")
+                        .HasDatabaseName("IX_TagExclusions_ServerConnectionId");
+
+                    b.ToTable("TagExclusions");
                 });
 
             modelBuilder.Entity("Sweeprr.API.Models.User", b =>
@@ -329,6 +549,16 @@ namespace Sweeprr.API.Data.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("Sweeprr.API.Models.Exclusion", b =>
+                {
+                    b.HasOne("Sweeprr.API.Models.RuleGroup", "RuleGroup")
+                        .WithMany()
+                        .HasForeignKey("RuleGroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("RuleGroup");
+                });
+
             modelBuilder.Entity("Sweeprr.API.Models.Rule", b =>
                 {
                     b.HasOne("Sweeprr.API.Models.RuleGroup", "RuleGroup")
@@ -349,6 +579,24 @@ namespace Sweeprr.API.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("RuleGroup");
+                });
+
+            modelBuilder.Entity("Sweeprr.API.Models.TagExclusion", b =>
+                {
+                    b.HasOne("Sweeprr.API.Models.RuleGroup", "RuleGroup")
+                        .WithMany()
+                        .HasForeignKey("RuleGroupId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Sweeprr.API.Models.ServerConnection", "ServerConnection")
+                        .WithMany()
+                        .HasForeignKey("ServerConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RuleGroup");
+
+                    b.Navigation("ServerConnection");
                 });
 
             modelBuilder.Entity("Sweeprr.API.Models.RuleGroup", b =>

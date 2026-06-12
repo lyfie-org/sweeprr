@@ -75,11 +75,46 @@ public sealed class MediaPopulationService : IMediaPopulationService
 
         // Fetch *arr data in parallel with Jellyfin items
         var (radarrIndex, radarrConnId) = await BuildRadarrIndexAsync(db, clientFactory, matcher, ct);
-        var (sonarrIndex, sonarrConnId) = await BuildSonarrIndexAsync(db, clientFactory, matcher, ct);
+        var (sonarrIndex, sonarrConnId, sonarrClient, sonarrSeriesList) =
+            await BuildSonarrIndexWithClientAsync(db, clientFactory, matcher, ct);
         var radarrTags = await LoadRadarrTagsAsync(db, clientFactory, ct);
         var sonarrTags = await LoadSonarrTagsAsync(db, clientFactory, ct);
         var radarrProfiles = await LoadRadarrProfilesAsync(db, clientFactory, ct);
         var sonarrProfiles = await LoadSonarrProfilesAsync(db, clientFactory, ct);
+
+        // Only fetch episode data when the rule group actually uses IsFinale or CutoffMet —
+        // avoids N+1 Sonarr API calls for groups that don't need it.
+        bool needsEpisodeData = group.Rules.Any(r =>
+            r.Field is RuleField.IsFinale or RuleField.CutoffMet);
+
+        var episodesBySeries = needsEpisodeData && sonarrClient is not null && sonarrSeriesList is not null
+            ? await FetchEpisodesForAllSeriesAsync(sonarrClient, sonarrSeriesList, ct)
+            : new Dictionary<int, IReadOnlyList<SonarrEpisode>>();
+
+        // Only query secondary *arr instances when the rule group uses HasComplementaryCopy —
+        // avoids hammering all instances on every scan.
+        bool needsCrossInstanceData = group.Rules.Any(r => r.Field == RuleField.HasComplementaryCopy);
+
+        HashSet<int> crossRadarrTmdbIds = [];
+        HashSet<int> crossSonarrTvdbIds = [];
+
+        if (needsCrossInstanceData)
+        {
+            if (radarrConnId.HasValue)
+                crossRadarrTmdbIds = await BuildCrossInstanceRadarrTmdbSetAsync(db, clientFactory, radarrConnId.Value, ct);
+            if (sonarrConnId.HasValue)
+                crossSonarrTvdbIds = await BuildCrossInstanceSonarrTvdbSetAsync(db, clientFactory, sonarrConnId.Value, ct);
+        }
+
+        // Only fetch disk stats when the rule group uses disk-space fields —
+        // avoids an extra API round-trip per connection on unrelated groups.
+        bool needsDiskData = group.Rules.Any(r =>
+            r.Field is RuleField.DiskFreeSpacePercent or RuleField.DiskFreeSpaceGb);
+
+        IReadOnlyDictionary<int, (double FreePercent, double FreeGb)> diskStatsMap =
+            needsDiskData
+                ? await BuildDiskStatsMapAsync(db, clientFactory, radarrConnId, sonarrConnId, ct)
+                : new Dictionary<int, (double, double)>();
 
         // Fetch Jellyfin items (per-user to get UserData)
         var primaryUserId = users.Count > 0 ? users[0].Id : null;
@@ -88,7 +123,7 @@ public sealed class MediaPopulationService : IMediaPopulationService
             {
                 UserId = primaryUserId,
                 IncludeItemTypes = itemTypes,
-                Fields = ["ProviderIds", "DateCreated", "UserData", "Path", "MediaStreams"],
+                Fields = ["ProviderIds", "DateCreated", "UserData", "Path", "MediaStreams", "Genres"],
             },
             maxItems: 10_000,
             ct: ct);
@@ -111,7 +146,9 @@ public sealed class MediaPopulationService : IMediaPopulationService
                 jItem, group.MediaType, users,
                 matcher, radarrIndex, radarrConnId, sonarrIndex, sonarrConnId,
                 radarrTags, sonarrTags, radarrProfiles, sonarrProfiles,
-                watchAgg);
+                episodesBySeries, watchAgg,
+                crossRadarrTmdbIds, crossSonarrTvdbIds,
+                diskStatsMap);
             contexts.Add(ctx);
         }
 
@@ -131,7 +168,11 @@ public sealed class MediaPopulationService : IMediaPopulationService
         IReadOnlyDictionary<int, string> sonarrTags,
         IReadOnlyDictionary<int, string> radarrProfiles,
         IReadOnlyDictionary<int, string> sonarrProfiles,
-        IWatchAggregationService watchAgg)
+        IReadOnlyDictionary<int, IReadOnlyList<SonarrEpisode>> episodesBySeries,
+        IWatchAggregationService watchAgg,
+        HashSet<int> crossRadarrTmdbIds,
+        HashSet<int> crossSonarrTvdbIds,
+        IReadOnlyDictionary<int, (double FreePercent, double FreeGb)> diskStatsMap)
     {
         int? seasonNumber = jItem.Type == JellyfinMediaType.Season ? jItem.IndexNumber : null;
         var identity = MediaIdentity.From(jItem.ProviderIds, seasonNumber);
@@ -145,6 +186,12 @@ public sealed class MediaPopulationService : IMediaPopulationService
         string? qualityProfile = null;
         decimal? fileSizeGb = null;
         int? arrConnectionId = null;
+        bool? seriesEnded = null;
+        bool? isFinale = null;
+        bool? cutoffMet = null;
+        bool? hasComplementaryCopy = null;
+        double? diskFreePercent = null;
+        double? diskFreeGb = null;
 
         if (groupMediaType == MediaType.Movie && radarrIndex is not null)
         {
@@ -152,13 +199,15 @@ public sealed class MediaPopulationService : IMediaPopulationService
             if (match is MatchResult<RadarrMovie>.Matched m)
             {
                 var movie = m.Value;
-                arrConnectionId = radarrConnId; // ServerConnection.Id (not the arr-item ID)
+                arrConnectionId = radarrConnId;
                 monitored = movie.Monitored;
                 tags = movie.Tags.Select(t => radarrTags.GetValueOrDefault(t, t.ToString())).ToList();
                 qualityProfile = radarrProfiles.GetValueOrDefault(movie.QualityProfileId);
                 fileSizeGb = movie.SizeOnDisk > 0
                     ? Math.Round((decimal)movie.SizeOnDisk / 1_073_741_824m, 2)
                     : null;
+                // CutoffMet: false means "cutoff NOT met"; we want true = cutoff IS met
+                cutoffMet = movie.MovieFile?.QualityCutoffNotMet == false;
             }
         }
         else if (groupMediaType is MediaType.Series or MediaType.Season && sonarrIndex is not null)
@@ -167,10 +216,11 @@ public sealed class MediaPopulationService : IMediaPopulationService
             if (match is MatchResult<SonarrSeriesMatch>.Matched m)
             {
                 var series = m.Value.Series;
-                arrConnectionId = sonarrConnId; // ServerConnection.Id
+                arrConnectionId = sonarrConnId;
                 monitored = series.Monitored;
                 tags = series.Tags.Select(t => sonarrTags.GetValueOrDefault(t, t.ToString())).ToList();
                 qualityProfile = sonarrProfiles.GetValueOrDefault(series.QualityProfileId);
+                seriesEnded = series.Ended;
 
                 if (m.Value.Season is { } season)
                 {
@@ -178,7 +228,28 @@ public sealed class MediaPopulationService : IMediaPopulationService
                         ? Math.Round((decimal)season.SizeOnDisk / 1_073_741_824m, 2)
                         : null;
                 }
+
+                // IsFinale: true if any episode in this season has a non-null finaleType.
+                // seasonNumber is only set for Season-type items; Series-type items get null.
+                if (seasonNumber.HasValue && episodesBySeries.TryGetValue(series.Id, out var eps))
+                {
+                    isFinale = eps.Any(e =>
+                        e.SeasonNumber == seasonNumber.Value && e.FinaleType is not null);
+                }
             }
+        }
+
+        // Cross-instance check: only meaningful when secondary instances were queried
+        if (crossRadarrTmdbIds.Count > 0 && identity.TmdbId.HasValue)
+            hasComplementaryCopy = crossRadarrTmdbIds.Contains(identity.TmdbId.Value);
+        else if (crossSonarrTvdbIds.Count > 0 && identity.TvdbId.HasValue)
+            hasComplementaryCopy = crossSonarrTvdbIds.Contains(identity.TvdbId.Value);
+
+        // Disk stats: keyed by connection ID, set after *arr match resolves arrConnectionId
+        if (arrConnectionId.HasValue && diskStatsMap.TryGetValue(arrConnectionId.Value, out var disk))
+        {
+            diskFreePercent = disk.FreePercent;
+            diskFreeGb      = disk.FreeGb;
         }
 
         return new MediaContext
@@ -196,12 +267,20 @@ public sealed class MediaPopulationService : IMediaPopulationService
                 : null,
             DateAdded = jItem.DateCreated?.UtcDateTime,
             Rating = jItem.CommunityRating.HasValue ? (decimal)jItem.CommunityRating.Value : null,
-            Genre = null,
-            ResolutionHeight = null,
+            Genres = jItem.Genres,
+            ResolutionHeight = jItem.ResolutionHeight,
+            VideoCodec = jItem.VideoCodec,
+            AudioChannels = jItem.AudioChannels,
             Monitored = monitored,
             Tags = tags,
             QualityProfile = qualityProfile,
             FileSizeGb = fileSizeGb,
+            SeriesEnded = seriesEnded,
+            IsFinale = isFinale,
+            CutoffMet = cutoffMet,
+            HasComplementaryCopy = hasComplementaryCopy,
+            DiskFreeSpacePercent = diskFreePercent,
+            DiskFreeSpaceGb      = diskFreeGb,
             // Provider IDs forwarded for execution-time *arr matching (stored on SweepItem)
             ImdbId = jItem.ProviderIds.ImdbId,
             TmdbId = jItem.ProviderIds.TmdbId,
@@ -264,19 +343,68 @@ public sealed class MediaPopulationService : IMediaPopulationService
         SweeprrDbContext db, IIntegrationClientFactory factory,
         IMediaMatchingService matcher, CancellationToken ct)
     {
+        var (index, connId, _, _) = await BuildSonarrIndexWithClientAsync(db, factory, matcher, ct);
+        return (index, connId);
+    }
+
+    private async Task<(ArrIndex<SonarrSeries>? Index, int? ConnectionId, SonarrClient? Client, IReadOnlyList<SonarrSeries>? Series)>
+        BuildSonarrIndexWithClientAsync(
+        SweeprrDbContext db, IIntegrationClientFactory factory,
+        IMediaMatchingService matcher, CancellationToken ct)
+    {
         var conn = await db.ServerConnections
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Type == ConnectionType.Sonarr && c.IsEnabled, ct);
 
-        if (conn is null) return (null, null);
+        if (conn is null) return (null, null, null, null);
 
         var client = await factory.CreateSonarrClientAsync(conn.Id, ct);
-        if (client is null) return (null, conn.Id);
+        if (client is null) return (null, conn.Id, null, null);
 
         var result = await client.GetSeriesAsync(ct);
-        if (result is not HttpResult<IReadOnlyList<SonarrSeries>>.Success ok) return (null, conn.Id);
+        if (result is not HttpResult<IReadOnlyList<SonarrSeries>>.Success ok)
+            return (null, conn.Id, client, null);
 
-        return (matcher.BuildSonarrIndex(ok.Value), conn.Id);
+        return (matcher.BuildSonarrIndex(ok.Value), conn.Id, client, ok.Value);
+    }
+
+    /// <summary>
+    /// Fetches all episodes for every series in the provided list.
+    /// Only called when a rule group uses <see cref="RuleField.IsFinale"/> or
+    /// <see cref="RuleField.CutoffMet"/>. Uses a bounded semaphore to limit
+    /// concurrent Sonarr requests to 4.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<int, IReadOnlyList<SonarrEpisode>>> FetchEpisodesForAllSeriesAsync(
+        SonarrClient client,
+        IReadOnlyList<SonarrSeries> allSeries,
+        CancellationToken ct)
+    {
+        using var semaphore = new SemaphoreSlim(4);
+        var tasks = allSeries.Select(async series =>
+        {
+            await semaphore.WaitAsync(ct);
+            try
+            {
+                var epResult = await client.GetEpisodesAsync(series.Id, ct);
+                return epResult is HttpResult<IReadOnlyList<SonarrEpisode>>.Success ok
+                    ? (series.Id, ok.Value)
+                    : (series.Id, (IReadOnlyList<SonarrEpisode>)[]);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        var fetched = await Task.WhenAll(tasks);
+        var result = new Dictionary<int, IReadOnlyList<SonarrEpisode>>(fetched.Length);
+        foreach (var (seriesId, episodes) in fetched)
+            result[seriesId] = episodes;
+
+        _logger.LogDebug("Fetched episode data for {Count} series (IsFinale/CutoffMet evaluation)",
+            result.Count);
+
+        return result;
     }
 
     private async Task<IReadOnlyDictionary<int, string>> LoadRadarrTagsAsync(
@@ -349,5 +477,147 @@ public sealed class MediaPopulationService : IMediaPopulationService
         return result is HttpResult<IReadOnlyList<SonarrQualityProfile>>.Success ok
             ? ok.Value.ToDictionary(p => p.Id, p => p.Name)
             : new Dictionary<int, string>();
+    }
+
+    // ── Disk stats loader (Story 9.3) ────────────────────────────────────────
+
+    /// <summary>
+    /// Fetches disk-space stats from the primary Radarr and/or Sonarr connections.
+    /// Returns a map of connection ID → (FreePercent, FreeGb). Called only when
+    /// the rule group uses <see cref="RuleField.DiskFreeSpacePercent"/> or
+    /// <see cref="RuleField.DiskFreeSpaceGb"/>.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<int, (double FreePercent, double FreeGb)>> BuildDiskStatsMapAsync(
+        SweeprrDbContext db, IIntegrationClientFactory factory,
+        int? radarrConnId, int? sonarrConnId, CancellationToken ct)
+    {
+        var map = new Dictionary<int, (double FreePercent, double FreeGb)>();
+
+        if (radarrConnId.HasValue)
+        {
+            var client = await factory.CreateRadarrClientAsync(radarrConnId.Value, ct);
+            if (client is not null)
+            {
+                var result = await client.GetDiskSpaceAsync(ct);
+                if (result is HttpResult<(double FreePercent, double FreeGb)>.Success ok)
+                    map[radarrConnId.Value] = ok.Value;
+                else
+                    _logger.LogWarning("DiskStats: failed to fetch disk space from Radarr connection {Id}: {Result}",
+                        radarrConnId.Value, result);
+            }
+        }
+
+        if (sonarrConnId.HasValue)
+        {
+            var client = await factory.CreateSonarrClientAsync(sonarrConnId.Value, ct);
+            if (client is not null)
+            {
+                var result = await client.GetDiskSpaceAsync(ct);
+                if (result is HttpResult<(double FreePercent, double FreeGb)>.Success ok)
+                    map[sonarrConnId.Value] = ok.Value;
+                else
+                    _logger.LogWarning("DiskStats: failed to fetch disk space from Sonarr connection {Id}: {Result}",
+                        sonarrConnId.Value, result);
+            }
+        }
+
+        _logger.LogDebug("DiskStats: loaded stats for {Count} connection(s)", map.Count);
+        return map;
+    }
+
+    // ── Cross-instance index builders (Story 8.4) ────────────────────────────
+
+    /// <summary>
+    /// Returns the set of TmdbIds present in every enabled Radarr connection
+    /// <em>except</em> <paramref name="primaryConnId"/>. Called once per scan run.
+    /// </summary>
+    private async Task<HashSet<int>> BuildCrossInstanceRadarrTmdbSetAsync(
+        SweeprrDbContext db, IIntegrationClientFactory factory, int primaryConnId, CancellationToken ct)
+    {
+        var secondaryConns = await db.ServerConnections
+            .AsNoTracking()
+            .Where(c => c.Type == ConnectionType.Radarr && c.IsEnabled && c.Id != primaryConnId)
+            .ToListAsync(ct);
+
+        if (secondaryConns.Count == 0)
+        {
+            _logger.LogDebug("HasComplementaryCopy: no secondary Radarr instances configured");
+            return [];
+        }
+
+        var tmdbIds = new HashSet<int>();
+        foreach (var conn in secondaryConns)
+        {
+            var client = await factory.CreateRadarrClientAsync(conn.Id, ct);
+            if (client is null)
+            {
+                _logger.LogWarning("HasComplementaryCopy: could not create Radarr client for connection {Id}", conn.Id);
+                continue;
+            }
+
+            var result = await client.GetMoviesAsync(ct);
+            if (result is HttpResult<IReadOnlyList<RadarrMovie>>.Success ok)
+            {
+                foreach (var movie in ok.Value)
+                    tmdbIds.Add(movie.TmdbId);
+
+                _logger.LogDebug("HasComplementaryCopy: loaded {Count} TmdbIds from Radarr connection {Id}",
+                    ok.Value.Count, conn.Id);
+            }
+            else
+            {
+                _logger.LogWarning("HasComplementaryCopy: failed to fetch movies from Radarr connection {Id}: {Result}",
+                    conn.Id, result);
+            }
+        }
+
+        return tmdbIds;
+    }
+
+    /// <summary>
+    /// Returns the set of TvdbIds present in every enabled Sonarr connection
+    /// <em>except</em> <paramref name="primaryConnId"/>. Called once per scan run.
+    /// </summary>
+    private async Task<HashSet<int>> BuildCrossInstanceSonarrTvdbSetAsync(
+        SweeprrDbContext db, IIntegrationClientFactory factory, int primaryConnId, CancellationToken ct)
+    {
+        var secondaryConns = await db.ServerConnections
+            .AsNoTracking()
+            .Where(c => c.Type == ConnectionType.Sonarr && c.IsEnabled && c.Id != primaryConnId)
+            .ToListAsync(ct);
+
+        if (secondaryConns.Count == 0)
+        {
+            _logger.LogDebug("HasComplementaryCopy: no secondary Sonarr instances configured");
+            return [];
+        }
+
+        var tvdbIds = new HashSet<int>();
+        foreach (var conn in secondaryConns)
+        {
+            var client = await factory.CreateSonarrClientAsync(conn.Id, ct);
+            if (client is null)
+            {
+                _logger.LogWarning("HasComplementaryCopy: could not create Sonarr client for connection {Id}", conn.Id);
+                continue;
+            }
+
+            var result = await client.GetSeriesAsync(ct);
+            if (result is HttpResult<IReadOnlyList<SonarrSeries>>.Success ok)
+            {
+                foreach (var series in ok.Value)
+                    tvdbIds.Add(series.TvdbId);
+
+                _logger.LogDebug("HasComplementaryCopy: loaded {Count} TvdbIds from Sonarr connection {Id}",
+                    ok.Value.Count, conn.Id);
+            }
+            else
+            {
+                _logger.LogWarning("HasComplementaryCopy: failed to fetch series from Sonarr connection {Id}: {Result}",
+                    conn.Id, result);
+            }
+        }
+
+        return tvdbIds;
     }
 }

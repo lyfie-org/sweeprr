@@ -9,6 +9,7 @@ export type SweepAction =
   | 'DeleteOnly'
   | 'DeleteSeriesIfEmpty'
   | 'UnmonitorSeasonIfEmpty'
+  | 'ChangeQualityProfile'
 export type LogicalOperator = 'And' | 'Or'
 export type RuleValueType = 'Number' | 'Date' | 'Text' | 'Bool' | 'RelativeDays' | 'TextList'
 export type RuleComparator =
@@ -46,6 +47,8 @@ export interface RuleGroupResponse {
   isEnabled: boolean
   cronOverride: string | null
   action: SweepAction
+  targetQualityProfileId: number | null
+  targetQualityProfileName: string | null
   createdAt: string
   updatedAt: string
   conditions: RuleConditionResponse[]
@@ -58,7 +61,14 @@ export interface RuleGroupRequest {
   isEnabled: boolean
   cronOverride?: string | null
   action: SweepAction
+  targetQualityProfileId?: number | null
+  targetQualityProfileName?: string | null
   conditions: RuleConditionDto[]
+}
+
+export interface QualityProfileDto {
+  id: number
+  name: string
 }
 
 export interface FieldDescriptor {
@@ -89,6 +99,26 @@ export interface PreviewResponse {
   note: string | null
 }
 
+export interface SimulateRequest {
+  mediaType: MediaType
+  conditions: RuleConditionDto[]
+}
+
+export interface SimulateLibraryBreakdown {
+  library: string
+  matchedCount: number
+  reclaimedGb: number
+}
+
+export interface SimulateResponse {
+  matchedCount: number
+  totalReclaimedGb: number
+  categoryBreakdown: Record<string, number>
+  libraryBreakdown: SimulateLibraryBreakdown[]
+  sampleTitles: string[]
+  note: string | null
+}
+
 // ── API module ────────────────────────────────────────────────────────────────
 
 export const rulesApi = {
@@ -104,6 +134,9 @@ export const rulesApi = {
   getTags: (connectionId: number) =>
     api.get<{ tags: TagDto[] }>(`/api/rulegroups/tags?connectionId=${connectionId}`),
 
+  getGenres: () =>
+    api.get<{ genres: string[] }>('/api/rulegroups/genres'),
+
   create: (req: RuleGroupRequest) =>
     api.post<RuleGroupResponse>('/api/rulegroups', req),
 
@@ -115,6 +148,9 @@ export const rulesApi = {
 
   preview: (req: PreviewRequest) =>
     api.post<PreviewResponse>('/api/rulegroups/preview', req),
+
+  simulate: (req: SimulateRequest) =>
+    api.post<SimulateResponse>('/api/rulegroups/simulate', req),
 
   scan: (id: number) =>
     api.post<{ ruleGroupId: number; ruleGroupName: string; itemsFlagged: number; durationMs: number }>(
@@ -137,6 +173,7 @@ export const ACTION_LABELS: Record<SweepAction, string> = {
   DeleteOnly: 'Delete Only',
   DeleteSeriesIfEmpty: 'Delete Series If Empty',
   UnmonitorSeasonIfEmpty: 'Unmonitor Season If Empty',
+  ChangeQualityProfile: 'Change Quality Profile',
 }
 
 export const COMPARATOR_LABELS: Record<RuleComparator, string> = {

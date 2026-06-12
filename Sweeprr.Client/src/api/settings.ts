@@ -9,6 +9,13 @@ export interface SettingsDto {
   pessimisticSizeGb: number
   libraryPercentCap: number | null
   overBroadMatchPct: number | null
+  allowDirectJellyfinDeletion: boolean
+  leavingSoonSyncEnabled: boolean
+  posterOverlaysEnabled: boolean
+  posterBackupDir: string
+  jellyfinSessionAlertsEnabled: boolean
+  preSweepBroadcastEnabled: boolean
+  publicBaseUrl: string | null
 }
 
 export interface UpdateSettingsRequest {
@@ -22,6 +29,13 @@ export interface UpdateSettingsRequest {
   clearLibraryPercentCap?: boolean
   overBroadMatchPct?: number
   clearOverBroadMatchPct?: boolean
+  allowDirectJellyfinDeletion?: boolean
+  leavingSoonSyncEnabled?: boolean
+  posterOverlaysEnabled?: boolean
+  posterBackupDir?: string
+  jellyfinSessionAlertsEnabled?: boolean
+  preSweepBroadcastEnabled?: boolean
+  publicBaseUrl?: string
 }
 
 export const settingsApi = {

@@ -19,4 +19,11 @@ public interface IConnectionService
 
     /// <summary>Persists the last-tested status back to the DB.</summary>
     Task PersistTestResultAsync(int id, bool success);
+
+    /// <summary>
+    /// Narrow read-modify-write of the Jellyfin Playback Reporting plugin detection
+    /// status, preserving other ExtraJson fields (e.g. AllowInsecure). No-op if the
+    /// connection no longer exists.
+    /// </summary>
+    Task SetPlaybackReportingPluginStatusAsync(int id, bool? active, CancellationToken ct = default);
 }

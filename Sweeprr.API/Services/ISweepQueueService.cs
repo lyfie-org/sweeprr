@@ -23,4 +23,14 @@ public interface ISweepQueueService
     /// Returns the number of newly created or updated Pending items.
     /// </summary>
     Task<int> ReconcileAsync(int ruleGroupId, IReadOnlyList<EvaluationResult> results, CancellationToken ct = default);
+
+    /// <summary>
+    /// Handles a "Request Extension" submission from the public portal (Story 10.4).
+    /// If <paramref name="mediaServerItemId"/> is Pending or Approved in the sweep queue and
+    /// <paramref name="jellyfinUsername"/> has not extended it within the last 7 days, removes
+    /// the item from the queue and creates a global <c>Exclusion</c> expiring in
+    /// <paramref name="requestedDays"/> days (clamped to 1-14).
+    /// </summary>
+    Task<ExtendResult> ExtendAsync(
+        string mediaServerItemId, string jellyfinUsername, int requestedDays, CancellationToken ct = default);
 }

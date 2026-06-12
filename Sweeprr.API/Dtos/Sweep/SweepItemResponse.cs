@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Sweeprr.API.Models;
 
 namespace Sweeprr.API.Dtos.Sweep;
@@ -18,4 +20,8 @@ public sealed record SweepItemResponse(
     string? ImdbId,
     DateTime FlaggedAt,
     DateTime? SweptAt,
-    string? SkippedReason);
+    string? SkippedReason,
+    IReadOnlyList<string>? Genres,
+    int? ResolutionHeight,
+    string? VideoCodec,
+    int? AudioChannels);

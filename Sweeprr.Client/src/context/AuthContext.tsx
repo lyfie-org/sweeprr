@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchStatus, fetchMe])
 
   const login = useCallback(async (username: string, password: string) => {
-    const res = await api.post<AuthTokenResponse>('/api/auth/login', { username, password })
+    const res = await api.postAnon<AuthTokenResponse>('/api/auth/login', { username, password })
     setToken(res.accessToken)
     const me = await api.get<MeResponse>('/api/auth/me')
     setUser({ id: me.id, username: me.username, role: me.role })
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const setup = useCallback(async (username: string, password: string) => {
-    const res = await api.post<AuthTokenResponse>('/api/auth/setup', { username, password })
+    const res = await api.postAnon<AuthTokenResponse>('/api/auth/setup', { username, password })
     setToken(res.accessToken)
     const me = await api.get<MeResponse>('/api/auth/me')
     setUser({ id: me.id, username: me.username, role: me.role })

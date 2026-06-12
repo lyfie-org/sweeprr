@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Data;
 using Sweeprr.API.Dtos.Sweep;
@@ -7,11 +8,21 @@ namespace Sweeprr.API.Services;
 
 public sealed class SweepQueueService : ISweepQueueService
 {
-    private readonly SweeprrDbContext _db;
+    private readonly SweeprrDbContext        _db;
+    private readonly ChannelWriter<byte>     _syncTrigger;
+    private readonly IOverlayRenderingService _overlayService;
+    private readonly INotificationService    _notifications;
 
-    public SweepQueueService(SweeprrDbContext db)
+    public SweepQueueService(
+        SweeprrDbContext db,
+        Channel<byte> syncChannel,
+        IOverlayRenderingService overlayService,
+        INotificationService notifications)
     {
-        _db = db;
+        _db             = db;
+        _syncTrigger    = syncChannel.Writer;
+        _overlayService = overlayService;
+        _notifications  = notifications;
     }
 
     public async Task<PagedResponse<SweepItemResponse>> QueryAsync(
@@ -85,6 +96,7 @@ public sealed class SweepQueueService : ISweepQueueService
 
         item.Status = SweepItemStatus.Approved;
         await _db.SaveChangesAsync(ct);
+        _syncTrigger.TryWrite(1);
 
         return ToResponse(item);
     }
@@ -106,7 +118,8 @@ public sealed class SweepQueueService : ISweepQueueService
         if (createExclusion)
         {
             var alreadyExcluded = await _db.Exclusions
-                .AnyAsync(e => e.MediaServerItemId == item.MediaServerItemId, ct);
+                .AnyAsync(e => e.MediaServerItemId == item.MediaServerItemId
+                            && (e.ExpiresAt == null || e.ExpiresAt > DateTime.UtcNow), ct);
 
             if (!alreadyExcluded)
             {
@@ -120,6 +133,10 @@ public sealed class SweepQueueService : ISweepQueueService
         }
 
         await _db.SaveChangesAsync(ct);
+        _syncTrigger.TryWrite(1);
+
+        await _overlayService.RestoreOriginalAsync(item, ct);
+
         return ToResponse(item);
     }
 
@@ -141,18 +158,34 @@ public sealed class SweepQueueService : ISweepQueueService
         var existingByItemId = existingPending
             .ToDictionary(s => s.MediaServerItemId, StringComparer.OrdinalIgnoreCase);
 
-        // Load excluded item IDs to skip them
+        var now = DateTime.UtcNow;
+
+        // Load non-expired excluded item IDs (global or scoped to this rule group)
         var excludedItemIds = await _db.Exclusions
+            .Where(e => (e.RuleGroupId == null || e.RuleGroupId == ruleGroupId)
+                     && (e.ExpiresAt == null || e.ExpiresAt > now))
             .Select(e => e.MediaServerItemId)
             .ToListAsync(ct);
         var excludedSet = excludedItemIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // Load active tag exclusions (global + scoped to this rule group)
+        var activeTagNames = await _db.TagExclusions
+            .Where(t => t.RuleGroupId == null || t.RuleGroupId == ruleGroupId)
+            .Select(t => t.TagName)
+            .ToListAsync(ct);
+        var tagExclusionSet = activeTagNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var upsertCount = 0;
+        var newItems    = new List<SweepItem>();
 
         foreach (var eval in matchedItems)
         {
-            // Skip permanently excluded items
+            // Skip excluded items
             if (excludedSet.Contains(eval.Item.ItemId))
+                continue;
+
+            // Skip items whose *arr tags match a tag exclusion
+            if (tagExclusionSet.Count > 0 && eval.Item.Tags?.Any(t => tagExclusionSet.Contains(t)) == true)
                 continue;
 
             if (existingByItemId.TryGetValue(eval.Item.ItemId, out var existing))
@@ -169,12 +202,16 @@ public sealed class SweepQueueService : ISweepQueueService
                 existing.ImdbId = eval.Item.ImdbId;
                 existing.ArrInstanceId = eval.Item.ArrConnectionId;
                 existing.SeasonNumber = eval.Item.SeasonNumber;
+                existing.Genres = eval.Item.Genres != null ? string.Join(",", eval.Item.Genres) : null;
+                existing.ResolutionHeight = eval.Item.ResolutionHeight;
+                existing.VideoCodec = eval.Item.VideoCodec;
+                existing.AudioChannels = eval.Item.AudioChannels;
                 upsertCount++;
             }
             else
             {
                 // Create new Pending item
-                _db.SweepItems.Add(new SweepItem
+                var newItem = new SweepItem
                 {
                     RuleGroupId = ruleGroupId,
                     MediaServerItemId = eval.Item.ItemId,
@@ -191,7 +228,13 @@ public sealed class SweepQueueService : ISweepQueueService
                     ImdbId = eval.Item.ImdbId,
                     ArrInstanceId = eval.Item.ArrConnectionId,
                     SeasonNumber = eval.Item.SeasonNumber,
-                });
+                    Genres = eval.Item.Genres != null ? string.Join(",", eval.Item.Genres) : null,
+                    ResolutionHeight = eval.Item.ResolutionHeight,
+                    VideoCodec = eval.Item.VideoCodec,
+                    AudioChannels = eval.Item.AudioChannels,
+                };
+                _db.SweepItems.Add(newItem);
+                newItems.Add(newItem);
                 upsertCount++;
             }
         }
@@ -205,7 +248,76 @@ public sealed class SweepQueueService : ISweepQueueService
             _db.SweepItems.RemoveRange(staleItems);
 
         await _db.SaveChangesAsync(ct);
+        _syncTrigger.TryWrite(1);
+
+        // Overlay operations run after DB save — overlay failure never blocks reconciliation
+        foreach (var stale in staleItems)
+            await _overlayService.RestoreOriginalAsync(stale, ct);
+
+        foreach (var created in newItems)
+            await _overlayService.ApplyOverlayAsync(created, "Leaving Soon", ct);
+
+        if (newItems.Count > 0)
+        {
+            var ruleGroupName = await _db.RuleGroups
+                .Where(rg => rg.Id == ruleGroupId)
+                .Select(rg => rg.Name)
+                .FirstOrDefaultAsync(ct) ?? $"#{ruleGroupId}";
+
+            _notifications.Notify(NotificationTrigger.PendingItems, new NotificationPayload(
+                NotificationTrigger.PendingItems,
+                "📋 New Items Pending Review",
+                [
+                    ("Rule Group", ruleGroupName),
+                    ("New Items", newItems.Count.ToString()),
+                ],
+                new { ruleGroupId, ruleGroupName, newItemsCount = newItems.Count },
+                DateTimeOffset.UtcNow));
+        }
+
         return upsertCount;
+    }
+
+    public async Task<ExtendResult> ExtendAsync(
+        string mediaServerItemId, string jellyfinUsername, int requestedDays, CancellationToken ct = default)
+    {
+        var item = await _db.SweepItems
+            .FirstOrDefaultAsync(s => s.MediaServerItemId == mediaServerItemId
+                && (s.Status == SweepItemStatus.Pending || s.Status == SweepItemStatus.Approved), ct);
+
+        if (item is null)
+            return new ExtendResult.NotQueued();
+
+        var now = DateTime.UtcNow;
+
+        var recentlyExtended = await _db.Exclusions.AnyAsync(e =>
+            e.MediaServerItemId == mediaServerItemId
+            && e.CreatedBy == jellyfinUsername
+            && e.CreatedAt > now.AddDays(-7), ct);
+
+        if (recentlyExtended)
+            return new ExtendResult.AbuseLimited();
+
+        var days = Math.Clamp(requestedDays, 1, 14);
+
+        var exclusion = new Exclusion
+        {
+            MediaServerItemId = mediaServerItemId,
+            Reason = $"Extended {days}d by Jellyfin user '{jellyfinUsername}' via extension portal",
+            CreatedAt = now,
+            RuleGroupId = null,
+            ExpiresAt = now.AddDays(days),
+            CreatedBy = jellyfinUsername,
+        };
+        _db.Exclusions.Add(exclusion);
+        _db.SweepItems.Remove(item);
+
+        await _db.SaveChangesAsync(ct);
+        _syncTrigger.TryWrite(1);
+
+        await _overlayService.RestoreOriginalAsync(item, ct);
+
+        return new ExtendResult.Success(exclusion);
     }
 
     public async Task<SweepItemResponse?> SkipAsync(
@@ -241,5 +353,9 @@ public sealed class SweepQueueService : ISweepQueueService
         s.ImdbId,
         s.FlaggedAt,
         s.SweptAt,
-        s.SkippedReason);
+        s.SkippedReason,
+        s.Genres?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        s.ResolutionHeight,
+        s.VideoCodec,
+        s.AudioChannels);
 }

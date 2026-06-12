@@ -11,4 +11,5 @@ public sealed record SonarrSeries(
     IReadOnlyList<int>        Tags,
     string?                   Path,
     DateTimeOffset?           Added,
+    bool                      Ended,
     IReadOnlyList<SonarrSeason> Seasons);

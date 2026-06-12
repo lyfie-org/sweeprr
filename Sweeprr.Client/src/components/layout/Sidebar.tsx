@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
-  House, Broom, ListChecks, PlugsConnected, Gear, Article, SignOut,
+  House, Broom, FilmSlate, ListChecks, PlugsConnected, Funnel, Gear, Article, SignOut, Flask,
 } from '@phosphor-icons/react'
 import { useAuth } from '../../context/AuthContext'
 import { RealtimePill } from './RealtimePill'
@@ -17,10 +17,13 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: '/',            icon: <House size={20} weight="duotone" />,          label: 'Dashboard'   },
   { to: '/sweep',       icon: <Broom size={20} weight="duotone" />,          label: 'Sweep Queue' },
+  { to: '/media',       icon: <FilmSlate size={20} weight="duotone" />,      label: 'Media'       },
   { to: '/rules',       icon: <ListChecks size={20} weight="duotone" />,     label: 'Rules'       },
   { to: '/connections', icon: <PlugsConnected size={20} weight="duotone" />, label: 'Connections' },
+  { to: '/exclusions',  icon: <Funnel size={20} weight="duotone" />,         label: 'Exclusions'  },
   { to: '/settings',    icon: <Gear size={20} weight="duotone" />,           label: 'Settings'    },
-  { to: '/logs',        icon: <Article size={20} weight="duotone" />,         label: 'Logs'        },
+  { to: '/logs',        icon: <Article size={20} weight="duotone" />,  label: 'Logs'        },
+  { to: '/sandbox',     icon: <Flask   size={20} weight="duotone" />,  label: 'Sandbox'     },
 ]
 
 interface SidebarProps {

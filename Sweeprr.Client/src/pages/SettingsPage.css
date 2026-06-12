@@ -218,3 +218,117 @@
   color: var(--border);
   user-select: none;
 }
+
+/* ── Advanced / Danger card ──────────────────────────────────────────────── */
+
+.settings-danger-card {
+  border-color: hsla(354, 84%, 55%, 0.25) !important;
+}
+
+.settings-danger-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.settings-danger-header__icon {
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
+.settings-danger__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: hsla(354, 84%, 55%, 0.08);
+  border: 1px solid hsla(354, 84%, 55%, 0.2);
+  border-radius: var(--r-md);
+  font-size: var(--text-sm);
+  color: hsl(354, 84%, 72%);
+  line-height: 1.5;
+  margin-top: var(--space-3);
+}
+
+.settings-danger__warning svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ── Confirmation modal ──────────────────────────────────────────────────── */
+
+.settings-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: var(--glass-blur);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.settings-modal {
+  background: var(--bg-card);
+  border: 1px solid hsla(354, 84%, 55%, 0.3);
+  border-radius: var(--r-xl);
+  padding: var(--space-8);
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 24px 64px 0 rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-modal__icon {
+  color: var(--danger);
+  display: flex;
+  justify-content: center;
+}
+
+.settings-modal__title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  text-align: center;
+  margin: 0;
+}
+
+.settings-modal__body {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.settings-modal__body strong {
+  color: var(--text-primary);
+}
+
+.settings-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+/* ── Poster overlay section ──────────────────────────────────────────────── */
+
+.settings-overlay__dir {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.settings-overlay__note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--warning);
+  line-height: 1.5;
+}

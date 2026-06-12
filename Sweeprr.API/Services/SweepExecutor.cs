@@ -1,7 +1,10 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Data;
 using Sweeprr.API.Dtos.Sweep;
 using Sweeprr.API.Integrations;
+using Sweeprr.API.Integrations.Bazarr;
+using Sweeprr.API.Integrations.Jellyfin;
 using Sweeprr.API.Integrations.Matching;
 using Sweeprr.API.Integrations.Radarr;
 using Sweeprr.API.Integrations.Radarr.Models;
@@ -14,33 +17,55 @@ namespace Sweeprr.API.Services;
 /// <inheritdoc cref="ISweepExecutor"/>
 public sealed class SweepExecutor : ISweepExecutor
 {
-    private readonly SweeprrDbContext _db;
+    private readonly SweeprrDbContext         _db;
     private readonly IIntegrationClientFactory _clientFactory;
-    private readonly IMediaMatchingService _matcher;
-    private readonly IFailsafeService _failsafe;
-    private readonly ILogger<SweepExecutor> _logger;
+    private readonly IMediaMatchingService     _matcher;
+    private readonly IFailsafeService          _failsafe;
+    private readonly IOverlayRenderingService  _overlayService;
+    private readonly INotificationService      _notifications;
+    private readonly ILogger<SweepExecutor>    _logger;
 
     public SweepExecutor(
         SweeprrDbContext db,
         IIntegrationClientFactory clientFactory,
         IMediaMatchingService matcher,
         IFailsafeService failsafe,
+        IOverlayRenderingService overlayService,
+        INotificationService notifications,
         ILogger<SweepExecutor> logger)
     {
-        _db = db;
-        _clientFactory = clientFactory;
-        _matcher = matcher;
-        _failsafe = failsafe;
-        _logger = logger;
+        _db             = db;
+        _clientFactory  = clientFactory;
+        _matcher        = matcher;
+        _failsafe       = failsafe;
+        _overlayService = overlayService;
+        _notifications  = notifications;
+        _logger         = logger;
     }
 
     public async Task<ExecuteSweepResult> ExecuteAsync(
         ExecuteSweepRequest request, CancellationToken ct = default)
     {
+        var stopwatch = Stopwatch.StartNew();
+
         var settings = await _db.GlobalSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct)
             ?? new GlobalSettings();
 
         bool isDryRun = settings.GlobalDryRun;
+        bool allowDirectDelete = settings.AllowDirectJellyfinDeletion;
+
+        // Resolve a Jellyfin connection ID once — only needed if direct-delete is enabled.
+        int? jellyfinConnId = allowDirectDelete
+            ? await ResolveJellyfinConnectionIdAsync(ct)
+            : null;
+
+        // Resolve optional Bazarr client for subtitle cleanup (null when not configured).
+        var bazarrClient = await _clientFactory.CreateBazarrClientAsync(ct);
+        if (bazarrClient is not null && !isDryRun && !await bazarrClient.IsAvailableAsync(ct))
+        {
+            _logger.LogWarning("Bazarr is unreachable — subtitle cleanup will be skipped for this sweep run");
+            bazarrClient = null;
+        }
 
         int totalQueueItems = await _db.SweepItems.CountAsync(ct);
         _failsafe.Initialize(
@@ -74,6 +99,12 @@ public sealed class SweepExecutor : ISweepExecutor
                 Message = preRunGate.Reason,
             });
             await _db.SaveChangesAsync(ct);
+            _notifications.Notify(NotificationTrigger.FailsafeTripped, new NotificationPayload(
+                NotificationTrigger.FailsafeTripped,
+                "🛑 Failsafe Tripped",
+                [("Reason", preRunGate.Reason), ("Items Affected", items.Count.ToString())],
+                new { reason = preRunGate.Reason, itemsAffected = items.Count },
+                DateTimeOffset.UtcNow));
             return new ExecuteSweepResult(0, 0, counters.FailsafeSkipped, 0, isDryRun);
         }
 
@@ -95,6 +126,12 @@ public sealed class SweepExecutor : ISweepExecutor
                     Message = groupGate.Reason,
                 });
                 await _db.SaveChangesAsync(ct);
+                _notifications.Notify(NotificationTrigger.FailsafeTripped, new NotificationPayload(
+                    NotificationTrigger.FailsafeTripped,
+                    "🛑 Failsafe Tripped",
+                    [("Reason", groupGate.Reason), ("Items Affected", grp.Items.Count.ToString())],
+                    new { reason = groupGate.Reason, itemsAffected = grp.Items.Count },
+                    DateTimeOffset.UtcNow));
                 continue;
             }
 
@@ -116,9 +153,9 @@ public sealed class SweepExecutor : ISweepExecutor
             }
 
             if (grp.IsRadarr)
-                await ProcessRadarrGroupAsync(grp.Items, connId.Value, isDryRun, counters, ct);
+                await ProcessRadarrGroupAsync(grp.Items, connId.Value, isDryRun, allowDirectDelete, jellyfinConnId, bazarrClient, counters, ct);
             else
-                await ProcessSonarrGroupAsync(grp.Items, connId.Value, isDryRun, counters, ct);
+                await ProcessSonarrGroupAsync(grp.Items, connId.Value, isDryRun, allowDirectDelete, jellyfinConnId, bazarrClient, counters, ct);
         }
 
         if (counters.Swept > 0 || counters.Failed > 0 || counters.FailsafeSkipped > 0)
@@ -133,7 +170,33 @@ public sealed class SweepExecutor : ISweepExecutor
                     : $"Sweep: {counters.Swept} swept, {counters.Failed} failed, {counters.FailsafeSkipped} skipped (failsafe), {counters.BytesRecovered / 1_073_741_824.0:F2} GB recovered",
             });
             await _db.SaveChangesAsync(ct);
+
+            var gbRecovered = counters.BytesRecovered / 1_073_741_824.0;
+            _notifications.Notify(NotificationTrigger.SweepComplete, new NotificationPayload(
+                NotificationTrigger.SweepComplete,
+                isDryRun ? "🧹 Dry-Run Sweep Complete" : "🧹 Sweep Complete",
+                [
+                    ("Swept", counters.Swept.ToString()),
+                    ("Failed", counters.Failed.ToString()),
+                    ("Skipped (Failsafe)", counters.FailsafeSkipped.ToString()),
+                    ("Recovered", $"{gbRecovered:F2} GB"),
+                    ("Duration", $"{stopwatch.Elapsed.TotalSeconds:F1}s"),
+                ],
+                new
+                {
+                    swept = counters.Swept,
+                    failed = counters.Failed,
+                    failsafeSkipped = counters.FailsafeSkipped,
+                    gbRecovered,
+                    durationMs = stopwatch.ElapsedMilliseconds,
+                    isDryRun,
+                },
+                DateTimeOffset.UtcNow));
         }
+
+        // Restore poster overlays for any items that ended up as Failed
+        foreach (var item in items.Where(i => i.Status == SweepItemStatus.Failed))
+            await _overlayService.RestoreOriginalAsync(item, ct);
 
         return new ExecuteSweepResult(
             counters.Swept, counters.Failed, counters.FailsafeSkipped,
@@ -144,6 +207,7 @@ public sealed class SweepExecutor : ISweepExecutor
 
     private async Task ProcessRadarrGroupAsync(
         IReadOnlyList<SweepItem> items, int connId, bool isDryRun,
+        bool allowDirectDelete, int? jellyfinConnId, BazarrClient? bazarrClient,
         RunCounters counters, CancellationToken ct)
     {
         var client = await _clientFactory.CreateRadarrClientAsync(connId, ct);
@@ -181,25 +245,33 @@ public sealed class SweepExecutor : ISweepExecutor
         var radarrIndex = _matcher.BuildRadarrIndex(moviesOk.Value);
 
         foreach (var item in items)
-            await ProcessRadarrItemAsync(client, radarrIndex, item, isDryRun, counters, ct);
+            await ProcessRadarrItemAsync(client, radarrIndex, item, isDryRun, allowDirectDelete, jellyfinConnId, bazarrClient, counters, ct);
     }
 
     private async Task ProcessRadarrItemAsync(
         RadarrClient client, ArrIndex<RadarrMovie> radarrIndex, SweepItem item,
-        bool isDryRun, RunCounters counters, CancellationToken ct)
+        bool isDryRun, bool allowDirectDelete, int? jellyfinConnId, BazarrClient? bazarrClient,
+        RunCounters counters, CancellationToken ct)
     {
         var identity = BuildIdentity(item);
         var matchResult = _matcher.MatchMovie(identity, radarrIndex);
 
         if (matchResult is not MatchResult<RadarrMovie>.Matched m)
         {
-            item.Status = SweepItemStatus.Failed;
-            item.SkippedReason = matchResult is MatchResult<RadarrMovie>.Unmatched
-                ? "Item not found in Radarr — verify provider IDs"
-                : "Ambiguous Radarr match — manual review required";
-            _logger.LogWarning("Cannot sweep '{Title}': {Reason}", item.Title, item.SkippedReason);
-            counters.Failed++;
-            await _db.SaveChangesAsync(ct);
+            if (matchResult is MatchResult<RadarrMovie>.Unmatched && allowDirectDelete && jellyfinConnId.HasValue)
+            {
+                await DirectJellyfinDeleteAsync(item, jellyfinConnId.Value, isDryRun, counters, ct);
+            }
+            else
+            {
+                item.Status = SweepItemStatus.Failed;
+                item.SkippedReason = matchResult is MatchResult<RadarrMovie>.Unmatched
+                    ? "OrphanedNoArrMatch"
+                    : "Ambiguous Radarr match — manual review required";
+                _logger.LogWarning("Cannot sweep '{Title}': {Reason}", item.Title, item.SkippedReason);
+                counters.Failed++;
+                await _db.SaveChangesAsync(ct);
+            }
             return;
         }
 
@@ -228,9 +300,10 @@ public sealed class SweepExecutor : ISweepExecutor
 
         bool success = item.RuleGroup.Action switch
         {
-            SweepAction.UnmonitorOnly => await UnmonitorOnlyRadarrAsync(client, radarrMovieId, item, ct),
-            SweepAction.DeleteOnly    => await DeleteOnlyRadarrAsync(client, radarrMovieId, item, ct),
-            _                        => await DeleteAndUnmonitorRadarrAsync(client, radarrMovieId, item, ct),
+            SweepAction.UnmonitorOnly        => await UnmonitorOnlyRadarrAsync(client, radarrMovieId, item, ct),
+            SweepAction.DeleteOnly           => await DeleteOnlyRadarrAsync(client, radarrMovieId, item, ct),
+            SweepAction.ChangeQualityProfile => await ChangeQualityProfileRadarrAsync(client, radarrMovieId, item, ct),
+            _                               => await DeleteAndUnmonitorRadarrAsync(client, radarrMovieId, item, ct),
         };
 
         if (success)
@@ -242,6 +315,9 @@ public sealed class SweepExecutor : ISweepExecutor
             _logger.LogInformation(
                 "Swept '{Title}' ({Action}): {Gb:F2} GB recovered",
                 item.Title, item.RuleGroup.Action, (item.SizeBytes ?? 0) / 1_073_741_824.0);
+
+            if (bazarrClient is not null)
+                await TriggerBazarrCleanupAsync(item.Title, radarrMovieId, isMovie: true, bazarrClient, isDryRun, ct);
         }
         else
         {
@@ -306,6 +382,7 @@ public sealed class SweepExecutor : ISweepExecutor
 
     private async Task ProcessSonarrGroupAsync(
         IReadOnlyList<SweepItem> items, int connId, bool isDryRun,
+        bool allowDirectDelete, int? jellyfinConnId, BazarrClient? bazarrClient,
         RunCounters counters, CancellationToken ct)
     {
         var client = await _clientFactory.CreateSonarrClientAsync(connId, ct);
@@ -343,25 +420,33 @@ public sealed class SweepExecutor : ISweepExecutor
         var sonarrIndex = _matcher.BuildSonarrIndex(seriesOk.Value);
 
         foreach (var item in items)
-            await ProcessSonarrItemAsync(client, sonarrIndex, item, isDryRun, counters, ct);
+            await ProcessSonarrItemAsync(client, sonarrIndex, item, isDryRun, allowDirectDelete, jellyfinConnId, bazarrClient, counters, ct);
     }
 
     private async Task ProcessSonarrItemAsync(
         SonarrClient client, ArrIndex<SonarrSeries> sonarrIndex, SweepItem item,
-        bool isDryRun, RunCounters counters, CancellationToken ct)
+        bool isDryRun, bool allowDirectDelete, int? jellyfinConnId, BazarrClient? bazarrClient,
+        RunCounters counters, CancellationToken ct)
     {
         var identity = BuildIdentity(item);
         var matchResult = _matcher.MatchSeries(identity, sonarrIndex);
 
         if (matchResult is not MatchResult<SonarrSeriesMatch>.Matched m)
         {
-            item.Status = SweepItemStatus.Failed;
-            item.SkippedReason = matchResult is MatchResult<SonarrSeriesMatch>.Unmatched
-                ? "Item not found in Sonarr — verify provider IDs"
-                : "Ambiguous Sonarr match — manual review required";
-            _logger.LogWarning("Cannot sweep '{Title}': {Reason}", item.Title, item.SkippedReason);
-            counters.Failed++;
-            await _db.SaveChangesAsync(ct);
+            if (matchResult is MatchResult<SonarrSeriesMatch>.Unmatched && allowDirectDelete && jellyfinConnId.HasValue)
+            {
+                await DirectJellyfinDeleteAsync(item, jellyfinConnId.Value, isDryRun, counters, ct);
+            }
+            else
+            {
+                item.Status = SweepItemStatus.Failed;
+                item.SkippedReason = matchResult is MatchResult<SonarrSeriesMatch>.Unmatched
+                    ? "OrphanedNoArrMatch"
+                    : "Ambiguous Sonarr match — manual review required";
+                _logger.LogWarning("Cannot sweep '{Title}': {Reason}", item.Title, item.SkippedReason);
+                counters.Failed++;
+                await _db.SaveChangesAsync(ct);
+            }
             return;
         }
 
@@ -401,6 +486,8 @@ public sealed class SweepExecutor : ISweepExecutor
                 seasonNumber.HasValue
                     ? await UnmonitorSeasonIfEmptyAsync(client, seriesId, seasonNumber.Value, item, ct)
                     : MarkFailed(item, "UnmonitorSeasonIfEmpty requires a season number"),
+            SweepAction.ChangeQualityProfile =>
+                await ChangeQualityProfileSonarrAsync(client, seriesId, item, ct),
             _ =>
                 await DeleteAndUnmonitorSonarrAsync(client, seriesId, seasonNumber, item, ct),
         };
@@ -416,6 +503,9 @@ public sealed class SweepExecutor : ISweepExecutor
                 item.Title, item.RuleGroup.Action,
                 seasonNumber?.ToString() ?? "all",
                 (item.SizeBytes ?? 0) / 1_073_741_824.0);
+
+            if (bazarrClient is not null)
+                await TriggerBazarrCleanupAsync(item.Title, seriesId, isMovie: false, bazarrClient, isDryRun, ct);
         }
         else
         {
@@ -586,6 +676,93 @@ public sealed class SweepExecutor : ISweepExecutor
         return true;
     }
 
+    // ── Quality profile downgrade ─────────────────────────────────────────────
+
+    private async Task<bool> ChangeQualityProfileRadarrAsync(
+        RadarrClient client, int movieId, SweepItem item, CancellationToken ct)
+    {
+        if (item.RuleGroup.TargetQualityProfileId is null)
+        {
+            _logger.LogWarning(
+                "ChangeQualityProfile: no target profile set on rule group '{Group}'. Skipping '{Title}'.",
+                item.RuleGroup.Name, item.Title);
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = "ChangeQualityProfile: TargetQualityProfileId not set on rule group";
+            return false;
+        }
+
+        var updateResult = await client.UpdateMovieQualityProfileAsync(
+            movieId, item.RuleGroup.TargetQualityProfileId.Value, ct);
+
+        if (updateResult is not HttpResult<EmptyResponse>.Success)
+        {
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = FailureReason(updateResult, "UpdateQualityProfile");
+            _logger.LogWarning("ChangeQualityProfile failed for '{Title}': {Reason}",
+                item.Title, item.SkippedReason);
+            return false;
+        }
+
+        var searchResult = await client.TriggerMovieSearchAsync(movieId, ct);
+        if (searchResult is not HttpResult<EmptyResponse>.Success)
+        {
+            // Profile was changed successfully — search trigger failure is non-fatal.
+            _logger.LogWarning(
+                "ChangeQualityProfile: profile updated for '{Title}' but search trigger failed: {Reason}",
+                item.Title, FailureReason(searchResult, "TriggerSearch"));
+        }
+
+        _logger.LogInformation(
+            "ChangeQualityProfile: updated Radarr movie '{Title}' to profile {ProfileId} ('{ProfileName}') and triggered search",
+            item.Title,
+            item.RuleGroup.TargetQualityProfileId.Value,
+            item.RuleGroup.TargetQualityProfileName ?? "unknown");
+
+        return true;
+    }
+
+    private async Task<bool> ChangeQualityProfileSonarrAsync(
+        SonarrClient client, int seriesId, SweepItem item, CancellationToken ct)
+    {
+        if (item.RuleGroup.TargetQualityProfileId is null)
+        {
+            _logger.LogWarning(
+                "ChangeQualityProfile: no target profile set on rule group '{Group}'. Skipping '{Title}'.",
+                item.RuleGroup.Name, item.Title);
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = "ChangeQualityProfile: TargetQualityProfileId not set on rule group";
+            return false;
+        }
+
+        var updateResult = await client.UpdateSeriesQualityProfileAsync(
+            seriesId, item.RuleGroup.TargetQualityProfileId.Value, ct);
+
+        if (updateResult is not HttpResult<EmptyResponse>.Success)
+        {
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = FailureReason(updateResult, "UpdateQualityProfile");
+            _logger.LogWarning("ChangeQualityProfile failed for '{Title}': {Reason}",
+                item.Title, item.SkippedReason);
+            return false;
+        }
+
+        var searchResult = await client.TriggerSeriesSearchAsync(seriesId, ct);
+        if (searchResult is not HttpResult<EmptyResponse>.Success)
+        {
+            _logger.LogWarning(
+                "ChangeQualityProfile: profile updated for '{Title}' but search trigger failed: {Reason}",
+                item.Title, FailureReason(searchResult, "TriggerSearch"));
+        }
+
+        _logger.LogInformation(
+            "ChangeQualityProfile: updated Sonarr series '{Title}' to profile {ProfileId} ('{ProfileName}') and triggered search",
+            item.Title,
+            item.RuleGroup.TargetQualityProfileId.Value,
+            item.RuleGroup.TargetQualityProfileName ?? "unknown");
+
+        return true;
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static bool MarkFailed(SweepItem item, string reason)
@@ -609,6 +786,133 @@ public sealed class SweepExecutor : ISweepExecutor
         _                                  => $"{operation} failed: unexpected result"
     };
 
+    // ── Bazarr subtitle cleanup ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Triggers Bazarr subtitle cleanup after a successful sweep action.
+    /// Failures are logged as warnings and never affect the sweep item's outcome.
+    /// </summary>
+    private async Task TriggerBazarrCleanupAsync(
+        string title, int arrId, bool isMovie,
+        BazarrClient bazarrClient, bool isDryRun, CancellationToken ct)
+    {
+        try
+        {
+            if (isDryRun)
+            {
+                _logger.LogInformation(
+                    "[DRY-RUN] Would delete Bazarr subtitles for '{Title}' ({Type}, ArrId={Id})",
+                    title, isMovie ? "movie" : "series", arrId);
+                return;
+            }
+
+            if (isMovie)
+                await bazarrClient.DeleteSubtitlesForMovieAsync(arrId, ct);
+            else
+                await bazarrClient.DeleteSubtitlesForSeriesAsync(arrId, ct);
+
+            _logger.LogInformation("Bazarr: subtitle cleanup triggered for '{Title}'", title);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Bazarr subtitle cleanup failed for '{Title}' — sweep result is unaffected", title);
+        }
+    }
+
+    // ── Direct Jellyfin fallback ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Deletes an orphaned item (no *arr match) directly via the Jellyfin API.
+    /// Exclusion check, dry-run gate, and failsafe are all enforced before
+    /// the destructive call — safety invariants are never bypassed.
+    /// </summary>
+    private async Task DirectJellyfinDeleteAsync(
+        SweepItem item, int jellyfinConnId, bool isDryRun,
+        RunCounters counters, CancellationToken ct)
+    {
+        // Safety: re-verify the item is not excluded (global or scoped).
+        bool excluded = await _db.Exclusions.AnyAsync(
+            e => e.MediaServerItemId == item.MediaServerItemId
+                 && (e.RuleGroupId == null || e.RuleGroupId == item.RuleGroupId)
+                 && (e.ExpiresAt == null || e.ExpiresAt > DateTime.UtcNow),
+            ct);
+
+        if (excluded)
+        {
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = "Excluded";
+            _logger.LogInformation(
+                "DirectJellyfinDelete skipped — '{Title}' is excluded.", item.Title);
+            counters.Failed++;
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
+        // Failsafe: orphan deletions count toward the per-run limits.
+        var gate = _failsafe.CheckAndRecord(item.SizeBytes);
+        if (!gate.IsOk)
+        {
+            item.SkippedReason = gate.Reason;
+            counters.FailsafeSkipped++;
+            _logger.LogWarning("Failsafe halted direct-delete of '{Title}': {Reason}",
+                item.Title, gate.Reason);
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
+        if (isDryRun)
+        {
+            _logger.LogInformation(
+                "[DRY-RUN] Would direct-delete orphaned Jellyfin item '{Title}' (ItemId={Id})",
+                item.Title, item.MediaServerItemId);
+            item.Status = SweepItemStatus.Swept;
+            item.SweptAt = DateTime.UtcNow;
+            counters.Swept++;
+            counters.BytesRecovered += item.SizeBytes ?? 0;
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
+        var jellyfinClient = await _clientFactory.CreateJellyfinClientAsync(jellyfinConnId, ct);
+        if (jellyfinClient is null)
+        {
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = $"Could not create Jellyfin client for connection {jellyfinConnId}";
+            counters.Failed++;
+            _logger.LogWarning("DirectJellyfinDelete: could not build client for '{Title}'.", item.Title);
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
+        var result = await jellyfinClient.DeleteItemAsync(item.MediaServerItemId, ct);
+
+        if (result is HttpResult<EmptyResponse>.Success
+            or HttpResult<EmptyResponse>.DefinitiveFailure { StatusCode: 404 })
+        {
+            // 404 = already gone; treat as success.
+            item.Status = SweepItemStatus.Swept;
+            item.SweptAt = DateTime.UtcNow;
+            counters.Swept++;
+            counters.BytesRecovered += item.SizeBytes ?? 0;
+            _logger.LogInformation(
+                "[DIRECT-DELETE] Deleted orphaned Jellyfin item '{Title}' (ItemId={Id}): {Gb:F2} GB recovered",
+                item.Title, item.MediaServerItemId, (item.SizeBytes ?? 0) / 1_073_741_824.0);
+        }
+        else
+        {
+            item.Status = SweepItemStatus.Failed;
+            item.SkippedReason = FailureReason(result, "DirectJellyfinDelete");
+            counters.Failed++;
+            _logger.LogWarning(
+                "DirectJellyfinDelete failed for '{Title}': {Reason}", item.Title, item.SkippedReason);
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
     private async Task<int?> ResolveConnectionIdAsync(
         int? storedConnId, ConnectionType type, CancellationToken ct)
     {
@@ -617,6 +921,14 @@ public sealed class SweepExecutor : ISweepExecutor
         var conn = await _db.ServerConnections
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Type == type && c.IsEnabled, ct);
+        return conn?.Id;
+    }
+
+    private async Task<int?> ResolveJellyfinConnectionIdAsync(CancellationToken ct)
+    {
+        var conn = await _db.ServerConnections
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Type == ConnectionType.Jellyfin && c.IsEnabled, ct);
         return conn?.Id;
     }
 

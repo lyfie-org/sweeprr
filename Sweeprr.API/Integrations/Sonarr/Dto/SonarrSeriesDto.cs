@@ -12,5 +12,6 @@ internal sealed class SonarrSeriesDto
     public List<int>            Tags             { get; set; } = [];
     public string?              Path             { get; set; }
     public string?              Added            { get; set; }
+    public bool                 Ended            { get; set; }
     public List<SonarrSeasonDto> Seasons         { get; set; } = [];
 }

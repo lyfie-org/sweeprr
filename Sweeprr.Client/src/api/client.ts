@@ -26,20 +26,34 @@ export class ApiError extends Error {
 
 export const AUTH_EXPIRED_EVENT = 'sweeprr:auth-expired'
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+interface RequestOptions extends RequestInit {
+  /** When true, a 401 response will NOT dispatch AUTH_EXPIRED_EVENT.
+   *  Use for login/setup calls where a 401 means wrong credentials, not session expiry. */
+  skipAuthEvent?: boolean
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { skipAuthEvent, ...fetchOptions } = options
   const token = getToken()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
+    ...(fetchOptions.headers as Record<string, string>),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
 
-  const res = await fetch(path, { ...options, headers })
+  const res = await fetch(path, { ...fetchOptions, headers })
 
   if (res.status === 401) {
-    clearToken()
-    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
-    throw new ApiError(401, 'Session expired')
+    if (!skipAuthEvent) {
+      clearToken()
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT))
+    }
+    let body: unknown
+    try { body = await res.json() } catch { /* empty */ }
+    const message = skipAuthEvent
+      ? ((body as { error?: string })?.error ?? 'Invalid credentials')
+      : 'Session expired'
+    throw new ApiError(401, message, body)
   }
 
   if (!res.ok) {
@@ -65,4 +79,6 @@ export const api = {
   put:    <T>(path: string, body?: unknown)  => request<T>(path, { method: 'PUT',    body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch:  <T>(path: string, body?: unknown)  => request<T>(path, { method: 'PATCH',  body: body !== undefined ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string)                  => request<T>(path, { method: 'DELETE' }),
+  /** Like post(), but a 401 response shows the server's error message instead of 'Session expired'. */
+  postAnon: <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined, skipAuthEvent: true }),
 }

@@ -20,7 +20,7 @@ import {
   ACTION_LABELS,
   MEDIA_TYPE_LABELS,
 } from '../../api/rules'
-import { connectionsApi, type ConnectionResponse } from '../../api/connections'
+import { connectionsApi, type ConnectionResponse, type QualityProfileDto } from '../../api/connections'
 import { ApiError } from '../../api/client'
 import { Button, Input, Spinner, Toggle, useToast } from '../ui'
 import { ConditionRow } from './ConditionRow'
@@ -57,6 +57,7 @@ const ALL_ACTIONS: SweepAction[] = [
   'DeleteOnly',
   'DeleteSeriesIfEmpty',
   'UnmonitorSeasonIfEmpty',
+  'ChangeQualityProfile',
 ]
 
 function buildSections(conditions: RuleConditionDto[]): Section[] {
@@ -122,6 +123,10 @@ export function RuleGroupEditor({ editing, onClose, onSaved }: Props) {
   const [description, setDescription] = useState(editing?.description ?? '')
   const [mediaType, setMediaType] = useState<MediaType>(editing?.mediaType ?? 'Movie')
   const [action, setAction] = useState<SweepAction>(editing?.action ?? 'DeleteAndUnmonitor')
+  const [targetProfileId, setTargetProfileId] = useState<number | null>(editing?.targetQualityProfileId ?? null)
+  const [targetProfileName, setTargetProfileName] = useState<string | null>(editing?.targetQualityProfileName ?? null)
+  const [qualityProfiles, setQualityProfiles] = useState<QualityProfileDto[]>([])
+  const [profilesLoading, setProfilesLoading] = useState(false)
   const [isEnabled, setIsEnabled] = useState(editing?.isEnabled ?? true)
   const [cronOverride, setCronOverride] = useState(editing?.cronOverride ?? '')
   const [cronError, setCronError] = useState<string | null>(null)
@@ -215,6 +220,18 @@ export function RuleGroupEditor({ editing, onClose, onSaved }: Props) {
     return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current) }
   }, [schedulePreview])
 
+  // ── Fetch quality profiles when action = ChangeQualityProfile ────────────
+  useEffect(() => {
+    if (action !== 'ChangeQualityProfile') return
+    const arrConn = connections.find(c => c.type === 1 || c.type === 2)
+    if (!arrConn) return
+    setProfilesLoading(true)
+    connectionsApi.getQualityProfiles(arrConn.id)
+      .then(profiles => setQualityProfiles(profiles))
+      .catch(() => setQualityProfiles([]))
+      .finally(() => setProfilesLoading(false))
+  }, [action, connections])
+
   // ── Arr connection for Tags field ─────────────────────────────────────────
   const arrConnection = connections.find(c => c.type === 1 || c.type === 2) ?? null
 
@@ -248,6 +265,8 @@ export function RuleGroupEditor({ editing, onClose, onSaved }: Props) {
       description: description.trim() || null,
       mediaType,
       action,
+      targetQualityProfileId: action === 'ChangeQualityProfile' ? targetProfileId : null,
+      targetQualityProfileName: action === 'ChangeQualityProfile' ? targetProfileName : null,
       isEnabled,
       cronOverride: cronOverride.trim() || null,
       conditions: flat,
@@ -431,6 +450,40 @@ export function RuleGroupEditor({ editing, onClose, onSaved }: Props) {
                     </div>
                   </div>
                 </div>
+
+                {action === 'ChangeQualityProfile' && (
+                  <div className="rule-editor-row">
+                    <div className="rule-editor-field">
+                      <label className="rule-editor-label">Target Quality Profile</label>
+                      <div className="rule-editor-select-wrap">
+                        <select
+                          id="re-quality-profile"
+                          className="rule-editor-select"
+                          value={targetProfileId ?? ''}
+                          onChange={e => {
+                            const id = e.target.value ? Number(e.target.value) : null
+                            const name = qualityProfiles.find(p => p.id === id)?.name ?? null
+                            setTargetProfileId(id)
+                            setTargetProfileName(name)
+                          }}
+                          disabled={saving || profilesLoading}
+                        >
+                          <option value="">
+                            {profilesLoading ? 'Loading profiles…' : '— Select a profile —'}
+                          </option>
+                          {qualityProfiles.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {!profilesLoading && qualityProfiles.length === 0 && (
+                        <p className="rule-editor-section__hint" style={{ marginTop: 4 }}>
+                          No profiles found — ensure a Radarr or Sonarr connection is configured.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="rule-editor-row">
                   <div className="rule-editor-field">

@@ -4,9 +4,10 @@ export const CONNECTION_TYPE_LABELS = {
   0: 'Jellyfin',
   1: 'Radarr',
   2: 'Sonarr',
+  3: 'Bazarr',
 } as const
 
-export type ConnectionType = 0 | 1 | 2
+export type ConnectionType = 0 | 1 | 2 | 3
 
 export interface ConnectionResponse {
   id: number
@@ -19,6 +20,8 @@ export interface ConnectionResponse {
   allowInsecure: boolean
   lastConnectedAt: string | null
   lastConnectionOk: boolean | null
+  /** Jellyfin only: whether the Playback Reporting plugin was detected. Null = unknown. */
+  playbackReportingPluginActive?: boolean | null
 }
 
 export interface ConnectionRequest {
@@ -41,6 +44,22 @@ export interface ConnectionTestResult {
   version: string | null
   latencyMs: number | null
   errorMessage: string | null
+}
+
+export interface QualityProfileDto {
+  id: number
+  name: string
+}
+
+export interface TagDto {
+  id: number
+  label: string
+}
+
+export interface DiskSpaceDto {
+  freeSpaceGb: number
+  totalSpaceGb: number
+  freePercent: number
 }
 
 export const connectionsApi = {
@@ -71,4 +90,13 @@ export const connectionsApi = {
       apiKey,
       allowInsecure,
     }),
+
+  getQualityProfiles: (connectionId: number) =>
+    api.get<QualityProfileDto[]>(`/api/connections/${connectionId}/qualityprofiles`),
+
+  getTags: (connectionId: number) =>
+    api.get<TagDto[]>(`/api/connections/${connectionId}/tags`),
+
+  getDiskSpace: (connectionId: number) =>
+    api.get<DiskSpaceDto>(`/api/connections/${connectionId}/diskspace`),
 }

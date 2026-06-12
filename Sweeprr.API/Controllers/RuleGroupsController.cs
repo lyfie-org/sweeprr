@@ -137,6 +137,32 @@ public sealed class RuleGroupsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Fetches genres from the active Jellyfin connection.
+    /// </summary>
+    [HttpGet("genres")]
+    [ProducesResponseType(typeof(GenresResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> GetGenres(CancellationToken ct)
+    {
+        var conn = await _db.ServerConnections
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Type == ConnectionType.Jellyfin && c.IsEnabled, ct);
+
+        if (conn is null)
+            return Ok(new GenresResponse(Array.Empty<string>()));
+
+        var client = await _clientFactory.CreateJellyfinClientAsync(conn.Id, ct);
+        if (client is null)
+            return StatusCode(502, new { error = "Could not connect to Jellyfin — check connection settings." });
+
+        var result = await client.GetGenresAsync(ct);
+        if (result is not Integrations.HttpResult<IReadOnlyList<string>>.Success ok)
+            return StatusCode(502, new { error = "Failed to fetch genres from Jellyfin." });
+
+        return Ok(new GenresResponse(ok.Value));
+    }
+
     // ── Preview (live match-count for Rule Builder chip) ───────────────────────
 
     /// <summary>
@@ -196,6 +222,110 @@ public sealed class RuleGroupsController : ControllerBase
             Note: null));
     }
 
+    // ── Simulate ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Runs rule evaluation and returns aggregated space-reclamation forecasts.
+    /// Nothing is persisted — fully ephemeral.
+    /// </summary>
+    [HttpPost("simulate")]
+    [ProducesResponseType(typeof(SimulateResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> Simulate([FromBody] SimulateRequest request, CancellationToken ct)
+    {
+        var validation = _validator.Validate(request.MediaType, request.Conditions);
+        if (!validation.IsValid)
+            return UnprocessableEntity(new { errors = validation.Errors });
+
+        var transientGroup = new RuleGroup
+        {
+            Id        = 0,
+            Name      = "__simulate__",
+            MediaType = request.MediaType,
+            IsEnabled = true,
+            Action    = SweepAction.DeleteAndUnmonitor,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Rules     = MapConditions(request.Conditions),
+        };
+
+        IReadOnlyList<MediaContext> items;
+        try
+        {
+            items = await _populationService.PopulateAsync(transientGroup, ct);
+        }
+        catch (Exception ex)
+        {
+            return Ok(new SimulateResponse { Note = $"Could not populate media data: {ex.Message}" });
+        }
+
+        if (items.Count == 0)
+        {
+            return Ok(new SimulateResponse { Note = "No scan data available yet — run a scan first." });
+        }
+
+        var results = await _evaluator.EvaluateAsync(transientGroup, items, ct);
+        var matched = results.Where(r => r.IsMatch).ToList();
+
+        if (matched.Count == 0)
+        {
+            return Ok(new SimulateResponse { MatchedCount = 0, Note = "No items matched the current conditions." });
+        }
+
+        // Aggregate size
+        var totalGb = matched.Sum(r => (double)(r.Item.FileSizeGb ?? 0m));
+
+        // Category breakdown: MediaType → total GB
+        var categoryBreakdown = matched
+            .GroupBy(r => r.Item.MediaType.ToString())
+            .ToDictionary(g => g.Key, g => g.Sum(r => (double)(r.Item.FileSizeGb ?? 0m)));
+
+        // Library breakdown: ArrConnectionId → connection name → count + GB
+        var connectionIds = matched
+            .Select(r => r.Item.ArrConnectionId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        var connectionNames = await _db.ServerConnections
+            .AsNoTracking()
+            .Where(c => connectionIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Name, ct);
+
+        var libraryBreakdown = matched
+            .GroupBy(r => r.Item.ArrConnectionId.HasValue
+                ? connectionNames.GetValueOrDefault(r.Item.ArrConnectionId.Value, "Unknown")
+                : "No Connection")
+            .Select(g => new SimulateLibraryBreakdown
+            {
+                Library      = g.Key,
+                MatchedCount = g.Count(),
+                ReclaimedGb  = g.Sum(r => (double)(r.Item.FileSizeGb ?? 0m)),
+            })
+            .OrderByDescending(l => l.ReclaimedGb)
+            .ToList();
+
+        // Sample titles: up to 10, "Title (Year)" when year is available
+        var sampleTitles = matched
+            .Take(10)
+            .Select(r =>
+            {
+                var year = r.Item.ReleaseDate?.Year;
+                return year.HasValue ? $"{r.Item.Title} ({year})" : r.Item.Title;
+            })
+            .ToList();
+
+        return Ok(new SimulateResponse
+        {
+            MatchedCount      = matched.Count,
+            TotalReclaimedGb  = totalGb,
+            CategoryBreakdown = categoryBreakdown,
+            LibraryBreakdown  = libraryBreakdown,
+            SampleTitles      = sampleTitles,
+        });
+    }
+
     // ── Create ───────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -224,6 +354,8 @@ public sealed class RuleGroupsController : ControllerBase
             IsEnabled   = request.IsEnabled,
             CronOverride = cron,
             Action      = request.Action,
+            TargetQualityProfileId   = request.TargetQualityProfileId,
+            TargetQualityProfileName = request.TargetQualityProfileName?.Trim(),
             CreatedAt   = DateTime.UtcNow,
             UpdatedAt   = DateTime.UtcNow,
             Rules       = MapConditions(request.Conditions),
@@ -265,6 +397,8 @@ public sealed class RuleGroupsController : ControllerBase
         group.IsEnabled   = request.IsEnabled;
         group.CronOverride = cron;
         group.Action      = request.Action;
+        group.TargetQualityProfileId   = request.TargetQualityProfileId;
+        group.TargetQualityProfileName = request.TargetQualityProfileName?.Trim();
         group.UpdatedAt   = DateTime.UtcNow;
 
         // Replace all conditions — cascade delete handles orphaned rules
@@ -366,6 +500,8 @@ public sealed class RuleGroupsController : ControllerBase
         IsEnabled:   g.IsEnabled,
         CronOverride: g.CronOverride,
         Action:      g.Action,
+        TargetQualityProfileId:   g.TargetQualityProfileId,
+        TargetQualityProfileName: g.TargetQualityProfileName,
         CreatedAt:   g.CreatedAt,
         UpdatedAt:   g.UpdatedAt,
         Conditions:  g.Rules
@@ -397,6 +533,8 @@ public sealed class RuleGroupsController : ControllerBase
         RuleField.Rating            => "Rating",
         RuleField.Genre             => "Genre",
         RuleField.ResolutionHeight  => "Resolution (Height)",
+        RuleField.VideoCodec        => "Video Codec",
+        RuleField.AudioChannels     => "Audio Channels",
         RuleField.Monitored         => "Monitored",
         RuleField.Tags              => "Tags",
         RuleField.QualityProfile    => "Quality Profile",

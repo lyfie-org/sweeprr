@@ -1,5 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Sweeprr.API.Data;
 using Sweeprr.API.Dtos.Connections;
+using Sweeprr.API.Integrations;
+using Sweeprr.API.Models;
 using Sweeprr.API.Services;
 
 namespace Sweeprr.API.Controllers;
@@ -10,11 +14,19 @@ public class ConnectionsController : ControllerBase
 {
     private readonly IConnectionService _connections;
     private readonly IConnectionTestService _tester;
+    private readonly IIntegrationClientFactory _clientFactory;
+    private readonly SweeprrDbContext _db;
 
-    public ConnectionsController(IConnectionService connections, IConnectionTestService tester)
+    public ConnectionsController(
+        IConnectionService connections,
+        IConnectionTestService tester,
+        IIntegrationClientFactory clientFactory,
+        SweeprrDbContext db)
     {
         _connections = connections;
         _tester = tester;
+        _clientFactory = clientFactory;
+        _db = db;
     }
 
     // ── CRUD (Story 1.2) ─────────────────────────────────────────────────────
@@ -127,6 +139,164 @@ public class ConnectionsController : ControllerBase
             request.Type, request.BaseUrl, request.ApiKey, request.AllowInsecure);
 
         return Ok(result);
+    }
+
+    // ── Quality profiles proxy (used by Rule Group editor for ChangeQualityProfile action) ──
+
+    /// <summary>
+    /// Returns available quality profiles from a Radarr or Sonarr connection.
+    /// Used by the Rule Group editor to populate the target-profile dropdown.
+    /// </summary>
+    [HttpGet("{id:int}/qualityprofiles")]
+    [ProducesResponseType(typeof(IEnumerable<QualityProfileResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> GetQualityProfiles(int id, CancellationToken ct)
+    {
+        var conn = await _db.ServerConnections
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
+
+        if (conn is null)
+            return NotFound(new { error = $"Connection {id} not found." });
+
+        if (conn.Type == ConnectionType.Jellyfin)
+            return BadRequest(new { error = "Quality profiles are only available for Radarr or Sonarr connections." });
+
+        if (conn.Type == ConnectionType.Radarr)
+        {
+            var client = await _clientFactory.CreateRadarrClientAsync(id, ct);
+            if (client is null)
+                return StatusCode(502, new { error = "Could not connect to Radarr — check connection settings." });
+
+            var result = await client.GetQualityProfilesAsync(ct);
+            if (result is not Integrations.HttpResult<System.Collections.Generic.IReadOnlyList<Integrations.Radarr.Models.RadarrQualityProfile>>.Success ok)
+                return StatusCode(502, new { error = "Failed to fetch quality profiles from Radarr." });
+
+            return Ok(ok.Value.Select(p => new QualityProfileResponse(p.Id, p.Name)));
+        }
+        else // Sonarr
+        {
+            var client = await _clientFactory.CreateSonarrClientAsync(id, ct);
+            if (client is null)
+                return StatusCode(502, new { error = "Could not connect to Sonarr — check connection settings." });
+
+            var result = await client.GetQualityProfilesAsync(ct);
+            if (result is not Integrations.HttpResult<System.Collections.Generic.IReadOnlyList<Integrations.Sonarr.Models.SonarrQualityProfile>>.Success ok)
+                return StatusCode(502, new { error = "Failed to fetch quality profiles from Sonarr." });
+
+            return Ok(ok.Value.Select(p => new QualityProfileResponse(p.Id, p.Name)));
+        }
+    }
+
+    // ── Tags proxy (used by Exclusions UI for tag-based whitelisting) ────────
+
+    /// <summary>
+    /// Returns all tags defined in a Radarr or Sonarr connection.
+    /// Used by the Exclusions page to populate the tag dropdown.
+    /// </summary>
+    [HttpGet("{id:int}/tags")]
+    [ProducesResponseType(typeof(IEnumerable<TagResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> GetTags(int id, CancellationToken ct)
+    {
+        var conn = await _db.ServerConnections
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
+
+        if (conn is null)
+            return NotFound(new { error = $"Connection {id} not found." });
+
+        if (conn.Type == ConnectionType.Jellyfin)
+            return BadRequest(new { error = "Tags are only available for Radarr or Sonarr connections." });
+
+        if (conn.Type == ConnectionType.Radarr)
+        {
+            var client = await _clientFactory.CreateRadarrClientAsync(id, ct);
+            if (client is null)
+                return StatusCode(502, new { error = "Could not connect to Radarr — check connection settings." });
+
+            var result = await client.GetTagsAsync(ct);
+            if (result is not Integrations.HttpResult<System.Collections.Generic.IReadOnlyList<Integrations.Radarr.Models.RadarrTag>>.Success ok)
+                return StatusCode(502, new { error = "Failed to fetch tags from Radarr." });
+
+            return Ok(ok.Value.Select(t => new TagResponse(t.Id, t.Label)));
+        }
+        else // Sonarr
+        {
+            var client = await _clientFactory.CreateSonarrClientAsync(id, ct);
+            if (client is null)
+                return StatusCode(502, new { error = "Could not connect to Sonarr — check connection settings." });
+
+            var result = await client.GetTagsAsync(ct);
+            if (result is not Integrations.HttpResult<System.Collections.Generic.IReadOnlyList<Integrations.Sonarr.Models.SonarrTag>>.Success ok)
+                return StatusCode(502, new { error = "Failed to fetch tags from Sonarr." });
+
+            return Ok(ok.Value.Select(t => new TagResponse(t.Id, t.Label)));
+        }
+    }
+
+    // ── Disk space proxy (used by Rule Builder helper text for disk-space fields) ──
+
+    /// <summary>
+    /// Returns current disk-space stats from a Radarr or Sonarr connection.
+    /// Used by the rule builder to display helper text (e.g. "Current: 21% free").
+    /// </summary>
+    [HttpGet("{id:int}/diskspace")]
+    [ProducesResponseType(typeof(DiskSpaceResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> GetDiskSpace(int id, CancellationToken ct)
+    {
+        var conn = await _db.ServerConnections
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
+
+        if (conn is null)
+            return NotFound(new { error = $"Connection {id} not found." });
+
+        if (conn.Type == ConnectionType.Jellyfin)
+            return BadRequest(new { error = "Disk space is only available for Radarr or Sonarr connections." });
+
+        if (conn.Type == ConnectionType.Radarr)
+        {
+            var client = await _clientFactory.CreateRadarrClientAsync(id, ct);
+            if (client is null)
+                return StatusCode(502, new { error = "Could not connect to Radarr — check connection settings." });
+
+            var result = await client.GetDiskSpaceAsync(ct);
+            if (result is not Integrations.HttpResult<(double FreePercent, double FreeGb)>.Success ok)
+                return StatusCode(502, new { error = "Failed to fetch disk space from Radarr." });
+
+            // Re-fetch total from client to build the response (sum of all paths)
+            var (freePercent, freeGb) = ok.Value;
+            var totalGb = freePercent > 0 ? freeGb / (freePercent / 100.0) : 0.0;
+            return Ok(new DiskSpaceResponse(
+                FreeSpaceGb: Math.Round(freeGb, 1),
+                TotalSpaceGb: Math.Round(totalGb, 1),
+                FreePercent: Math.Round(freePercent, 1)));
+        }
+        else // Sonarr
+        {
+            var client = await _clientFactory.CreateSonarrClientAsync(id, ct);
+            if (client is null)
+                return StatusCode(502, new { error = "Could not connect to Sonarr — check connection settings." });
+
+            var result = await client.GetDiskSpaceAsync(ct);
+            if (result is not Integrations.HttpResult<(double FreePercent, double FreeGb)>.Success ok)
+                return StatusCode(502, new { error = "Failed to fetch disk space from Sonarr." });
+
+            var (freePercent, freeGb) = ok.Value;
+            var totalGb = freePercent > 0 ? freeGb / (freePercent / 100.0) : 0.0;
+            return Ok(new DiskSpaceResponse(
+                FreeSpaceGb: Math.Round(freeGb, 1),
+                TotalSpaceGb: Math.Round(totalGb, 1),
+                FreePercent: Math.Round(freePercent, 1)));
+        }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

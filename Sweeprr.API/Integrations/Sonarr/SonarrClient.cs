@@ -88,6 +88,24 @@ public sealed class SonarrClient : ClientBase
             (IReadOnlyList<SonarrHistoryRecord>)dtos.Select(ToHistoryRecord).ToList());
     }
 
+    /// <summary>
+    /// Returns disk-space usage for all paths Sonarr manages.
+    /// Used to populate <c>DiskFreeSpacePercent</c> / <c>DiskFreeSpaceGb</c> rule fields.
+    /// </summary>
+    public async Task<HttpResult<(double FreePercent, double FreeGb)>> GetDiskSpaceAsync(
+        CancellationToken ct = default)
+    {
+        var result = await GetAsync<List<SonarrDiskSpaceDto>>("/api/v3/diskspace", ct);
+        return result.Map(dtos =>
+        {
+            long totalFree  = dtos.Sum(d => d.FreeSpace);
+            long totalTotal = dtos.Sum(d => d.TotalSpace);
+            double pct = totalTotal > 0 ? (double)totalFree / totalTotal * 100.0 : 0.0;
+            double gb  = totalFree / 1_073_741_824.0;
+            return (pct, gb);
+        });
+    }
+
     public async Task<HttpResult<IReadOnlyList<SonarrQualityProfile>>> GetQualityProfilesAsync(
         CancellationToken ct = default)
     {
@@ -223,6 +241,45 @@ public sealed class SonarrClient : ClientBase
             ct);
 
     /// <summary>
+    /// Changes the quality profile of a Sonarr series.
+    ///
+    /// Uses a GET-then-PUT round-trip via <see cref="JsonNode"/> so all Sonarr fields
+    /// are preserved in the PUT body — only <c>qualityProfileId</c> is mutated.
+    /// </summary>
+    public async Task<HttpResult<EmptyResponse>> UpdateSeriesQualityProfileAsync(
+        int id, int profileId, CancellationToken ct = default)
+    {
+        var getResult = await GetAsync<JsonNode?>($"/api/v3/series/{id}", ct);
+
+        switch (getResult)
+        {
+            case HttpResult<JsonNode?>.TransientFailure t:
+                return HttpResult<EmptyResponse>.Transient(t.Reason, t.Exception);
+
+            case HttpResult<JsonNode?>.DefinitiveFailure d:
+                return HttpResult<EmptyResponse>.Definitive(d.StatusCode, d.Reason);
+
+            case HttpResult<JsonNode?>.Success { Value: JsonObject seriesNode }:
+                seriesNode["qualityProfileId"] = profileId;
+                var putResult = await PutAsync<EmptyResponse>($"/api/v3/series/{id}", seriesNode, ct);
+                return putResult;
+
+            default:
+                return HttpResult<EmptyResponse>.Transient(
+                    $"Unexpected response shape from Sonarr GET /api/v3/series/{id}");
+        }
+    }
+
+    /// <summary>
+    /// Triggers Sonarr to search for new releases matching the current quality profile.
+    /// </summary>
+    public Task<HttpResult<EmptyResponse>> TriggerSeriesSearchAsync(
+        int seriesId, CancellationToken ct = default)
+        => PostAsync<EmptyResponse>("/api/v3/command",
+            new { name = "SeriesSearch", seriesId },
+            ct);
+
+    /// <summary>
     /// Permanently deletes a series from Sonarr.
     ///
     /// <paramref name="deleteFiles"/> removes files on disk.
@@ -265,6 +322,7 @@ public sealed class SonarrClient : ClientBase
         d.Tags.AsReadOnly(),
         d.Path,
         ParseDate(d.Added),
+        d.Ended,
         d.Seasons.Select(ToSeason).ToList().AsReadOnly());
 
     private static SonarrSeason ToSeason(SonarrSeasonDto d) => new(
@@ -285,7 +343,8 @@ public sealed class SonarrClient : ClientBase
         d.HasFile,
         d.Monitored,
         ParseDate(d.AirDate),
-        d.Title);
+        d.Title,
+        d.FinaleType);
 
     private static SonarrEpisodeFile ToEpisodeFile(SonarrEpisodeFileDto d) => new(
         d.Id,
@@ -295,7 +354,8 @@ public sealed class SonarrClient : ClientBase
         d.Path,
         d.Size,
         ParseDate(d.DateAdded),
-        d.ReleaseGroup);
+        d.ReleaseGroup,
+        d.QualityCutoffNotMet);
 
     private static SonarrHistoryRecord ToHistoryRecord(SonarrHistoryRecordDto d) => new(
         d.Id,

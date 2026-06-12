@@ -12,4 +12,5 @@ internal sealed class SonarrEpisodeDto
     public bool    Monitored     { get; set; }
     public string? AirDate       { get; set; }
     public string? Title         { get; set; }
+    public string? FinaleType    { get; set; }  // "series" | "season" | null; Sonarr v4+ only
 }

@@ -21,6 +21,9 @@ public sealed class RuleGroupRequest
     [Required]
     public SweepAction Action { get; init; } = SweepAction.DeleteAndUnmonitor;
 
+    public int? TargetQualityProfileId { get; init; }
+    public string? TargetQualityProfileName { get; init; }
+
     [Required, MinLength(1, ErrorMessage = "A rule group must have at least one condition.")]
     public IReadOnlyList<RuleConditionDto> Conditions { get; init; } = [];
 }

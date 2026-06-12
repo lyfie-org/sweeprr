@@ -29,14 +29,28 @@ public sealed class MediaContext
     public DateTime? ReleaseDate { get; init; }
     public DateTime? DateAdded { get; init; }
     public decimal? Rating { get; init; }
-    public string? Genre { get; init; }
+    public IReadOnlyList<string>? Genres { get; init; }
     public int? ResolutionHeight { get; init; }
+    public string? VideoCodec { get; init; }
+    public int? AudioChannels { get; init; }
 
     // *arr — Radarr/Sonarr clients (Story 2.4)
     public bool? Monitored { get; init; }
     public IReadOnlyList<string>? Tags { get; init; }
     public string? QualityProfile { get; init; }
     public decimal? FileSizeGb { get; init; }
+
+    // TV-specific (Story 7.3) — null when not applicable or data unavailable (→ Missing, not Transient)
+    public bool? SeriesEnded { get; init; }
+    public bool? IsFinale    { get; init; }
+    public bool? CutoffMet   { get; init; }
+
+    // Multi-instance (Story 8.4) — null when only one instance configured or field not requested
+    public bool? HasComplementaryCopy { get; init; }
+
+    // Disk space (Story 9.3) — null when not requested or *arr unavailable
+    public double? DiskFreeSpacePercent { get; init; }
+    public double? DiskFreeSpaceGb      { get; init; }
 
     // Provider IDs (from Jellyfin — stored on SweepItem for execution-time *arr matching)
     public string? ImdbId { get; init; }

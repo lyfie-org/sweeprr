@@ -4,6 +4,7 @@ using Cronos;
 using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Data;
 using Sweeprr.API.Models;
+using Sweeprr.API.Services;
 
 namespace Sweeprr.API.Background;
 
@@ -11,6 +12,7 @@ public sealed class SchedulerHostedService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IScanPipeline _pipeline;
+    private readonly IJellyfinSessionAlertService _sessionAlerts;
     private readonly ILogger<SchedulerHostedService> _logger;
 
     private readonly ConcurrentDictionary<int, byte> _runningGroups = new();
@@ -19,20 +21,33 @@ public sealed class SchedulerHostedService : BackgroundService
     private readonly TimeSpan _tickInterval;
     private readonly TimeSpan _scheduleReloadInterval;
 
+    /// <summary>
+    /// How long before a scheduled run to send the pre-sweep broadcast warning
+    /// (Story 10.2). Must match the "10 minutes" wording in
+    /// <c>JellyfinSessionAlertService.PreSweepMessage</c>.
+    /// </summary>
+    private static readonly TimeSpan PreSweepWarningWindow = TimeSpan.FromMinutes(10);
+
     private readonly record struct ScheduleEntry(int RuleGroupId, CronExpression Cron, DateTimeOffset NextFire);
 
     private List<ScheduleEntry> _schedules = [];
     private DateTimeOffset _lastScheduleLoad = DateTimeOffset.MinValue;
 
+    // (RuleGroupId, NextFire) pairs that have already received a pre-sweep broadcast,
+    // so repeated ticks within the warning window don't re-send. Pruned in LoadSchedulesAsync.
+    private readonly HashSet<(int RuleGroupId, DateTimeOffset NextFire)> _preSweepNotified = new();
+
     public SchedulerHostedService(
         IServiceScopeFactory scopeFactory,
         IScanPipeline pipeline,
+        IJellyfinSessionAlertService sessionAlerts,
         ILogger<SchedulerHostedService> logger,
         TimeSpan? tickInterval = null,
         TimeSpan? scheduleReloadInterval = null)
     {
         _scopeFactory = scopeFactory;
         _pipeline = pipeline;
+        _sessionAlerts = sessionAlerts;
         _logger = logger;
         _tickInterval = tickInterval ?? TimeSpan.FromSeconds(30);
         _scheduleReloadInterval = scheduleReloadInterval ?? TimeSpan.FromMinutes(2);
@@ -46,6 +61,9 @@ public sealed class SchedulerHostedService : BackgroundService
     internal async Task ForceFireAsync(CancellationToken ct = default)
         => await FireDueJobsAsync(ct);
 
+    internal async Task ForceCheckPreSweepAsync(CancellationToken ct = default)
+        => await CheckPreSweepWarningsAsync(ct);
+
     internal async Task ForceTickAsync(CancellationToken ct = default)
     {
         await LoadSchedulesAsync(ct);
@@ -56,6 +74,16 @@ public sealed class SchedulerHostedService : BackgroundService
 
     public DateTimeOffset? GetNextScheduledRun()
         => _schedules.Count == 0 ? null : _schedules.Min(s => s.NextFire);
+
+    /// <summary>
+    /// Returns the next scheduled fire time for a specific rule group, or <c>null</c> if
+    /// that group has no loaded schedule (disabled, invalid cron, or not yet loaded).
+    /// Used by the public extension portal (Story 10.4) to compute "days remaining".
+    /// </summary>
+    public DateTimeOffset? GetNextRunForGroup(int ruleGroupId)
+        => _schedules.Where(s => s.RuleGroupId == ruleGroupId)
+                      .Select(s => (DateTimeOffset?)s.NextFire)
+                      .FirstOrDefault();
 
     // ── Manual trigger (called from the controller) ─────────────────────────
 
@@ -97,6 +125,7 @@ public sealed class SchedulerHostedService : BackgroundService
                 if (DateTimeOffset.UtcNow - _lastScheduleLoad > _scheduleReloadInterval)
                     await LoadSchedulesAsync(stoppingToken);
 
+                await CheckPreSweepWarningsAsync(stoppingToken);
                 await FireDueJobsAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -158,11 +187,46 @@ public sealed class SchedulerHostedService : BackgroundService
             _schedules = entries;
             _lastScheduleLoad = DateTimeOffset.UtcNow;
 
+            _preSweepNotified.RemoveWhere(k => k.NextFire < now);
+
             _logger.LogDebug("Loaded {Count} schedules", entries.Count);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Failed to reload schedules — will retry next tick");
+        }
+    }
+
+    // ── Pre-sweep broadcast ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// For each schedule entry firing within <see cref="PreSweepWarningWindow"/>,
+    /// sends a one-time "cleanup starting soon" broadcast via
+    /// <see cref="IJellyfinSessionAlertService.BroadcastPreSweepWarningAsync"/>.
+    /// Dedup is keyed on (RuleGroupId, NextFire) so repeated ticks within the
+    /// window don't re-send; <see cref="LoadSchedulesAsync"/> prunes stale keys.
+    /// </summary>
+    private async Task CheckPreSweepWarningsAsync(CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        foreach (var entry in _schedules)
+        {
+            if (entry.NextFire <= now || entry.NextFire - now > PreSweepWarningWindow) continue;
+            if (!_preSweepNotified.Add((entry.RuleGroupId, entry.NextFire))) continue;
+
+            try
+            {
+                await _sessionAlerts.BroadcastPreSweepWarningAsync(ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send pre-sweep broadcast for group {GroupId}", entry.RuleGroupId);
+            }
         }
     }
 
