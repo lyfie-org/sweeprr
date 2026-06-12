@@ -61,6 +61,8 @@ RUN dotnet publish Sweeprr.API/Sweeprr.API.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends wget tzdata gosu && rm -rf /var/lib/apt/lists/*
+
 EXPOSE 8080
 
 ENV ASPNETCORE_URLS=http://+:8080
@@ -74,4 +76,8 @@ VOLUME ["/config"]
 
 COPY --from=api-build /app/publish .
 
-ENTRYPOINT ["dotnet", "Sweeprr.API.dll"]
+# Copy and configure the entrypoint script for PUID/PGID support
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

@@ -30,14 +30,14 @@ docker run -d \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=Etc/UTC \
-  ghcr.io/lyfie-org/sweeprr:latest
+  lyfie/sweeprr:latest
 ```
 
 ### Docker Compose
 ```yaml
 services:
   sweeprr:
-    image: ghcr.io/lyfie-org/sweeprr:latest
+    image: lyfie/sweeprr:latest
     container_name: sweeprr
     ports:
       - "8080:8080"

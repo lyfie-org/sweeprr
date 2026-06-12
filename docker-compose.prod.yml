@@ -1,0 +1,19 @@
+services:
+  sweeprr:
+    container_name: sweeprr
+    image: lyfie/sweeprr:latest
+    ports:
+      - 5454:8080
+    volumes:
+      - /opt/sweeprr/config:/config
+    environment:
+      PUID: 1000 #optional
+      PGID: 1000 #optional
+      TZ: Asia/Kolkata
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

@@ -17,11 +17,13 @@ public static class DatabaseExtensions
         var dbPath = Path.Combine(configDir, "sweeprr.db");
 
         services.AddDbContext<SweeprrDbContext>(options =>
+        {
             options.UseSqlite(
                 $"Data Source={dbPath}",
                 sqlite => sqlite.MigrationsAssembly(typeof(SweeprrDbContext).Assembly.FullName)
-            )
-        );
+            );
+            options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.NonTransactionalMigrationOperationWarning));
+        });
 
         return services;
     }

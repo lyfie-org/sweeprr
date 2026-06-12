@@ -71,6 +71,6 @@ To restore Sweeprr on a new host or after a reset:
      --name sweeprr \
      -p 8080:8080 \
      -v sweeprr_config:/config \
-     ghcr.io/lyfie-org/sweeprr:latest
+     lyfie/sweeprr:latest
    ```
 4. Verify that the settings load and your connection credentials are decrypted successfully by running a connection test in the settings panel.
