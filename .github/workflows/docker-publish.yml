@@ -77,8 +77,6 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: sweeprr-smoketest:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Run Smoke Test
         run: |
@@ -127,8 +125,6 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/sweeprr:${{ env.NEW_TAG }}
             ${{ secrets.DOCKERHUB_USERNAME }}/sweeprr:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       # ─── 3. SYNC development BRANCH ─────────────────────────────────────────────────
       - name: Sync main back to development

@@ -16,7 +16,7 @@
 
 
 # ── Stage 1: Build React client ───────────────────────────────────────────────
-FROM node:22-alpine AS client-build
+FROM --platform=$BUILDPLATFORM node:22-alpine AS client-build
 
 # Install pnpm explicitly (avoids corepack version-negotiation edge cases)
 RUN npm install -g pnpm@11.5.1
@@ -37,7 +37,7 @@ RUN pnpm --filter sweeprr-client build
 
 
 # ── Stage 2: Build .NET API ───────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS api-build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0 AS api-build
 WORKDIR /src
 
 # Restore deps in a separate layer (cached until csproj changes)
