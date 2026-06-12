@@ -47,6 +47,7 @@ const ACTION_VARIANTS: Record<SweepAction, 'danger' | 'warning' | 'info' | 'neut
   DeleteSeriesIfEmpty:     'warning',
   UnmonitorOnly:           'info',
   UnmonitorSeasonIfEmpty:  'info',
+  ChangeQualityProfile:    'neutral',
 }
 
 function conditionSummary(count: number) {
