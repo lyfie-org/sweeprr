@@ -33,7 +33,7 @@ function MediaExclusionsTab() {
       const data = await exclusionsApi.getAll()
       setExclusions(data)
     } catch {
-      toast({ variant: 'error', message: 'Failed to load exclusions.' })
+      toast({ type: 'error', title: 'Error', message: 'Failed to load exclusions.' })
     } finally {
       setLoading(false)
     }
@@ -46,9 +46,9 @@ function MediaExclusionsTab() {
     try {
       await exclusionsApi.delete(id)
       setExclusions(prev => prev.filter(e => e.id !== id))
-      toast({ variant: 'success', message: 'Exclusion removed.' })
+      toast({ type: 'success', title: 'Success', message: 'Exclusion removed.' })
     } catch {
-      toast({ variant: 'error', message: 'Failed to remove exclusion.' })
+      toast({ type: 'error', title: 'Error', message: 'Failed to remove exclusion.' })
     } finally {
       setDeletingId(null)
     }
@@ -57,7 +57,7 @@ function MediaExclusionsTab() {
   if (loading) {
     return (
       <div className="excl-empty">
-        <Spinner size={24} />
+        <Spinner size="lg" />
       </div>
     )
   }
@@ -148,7 +148,7 @@ function TagExclusionsTab() {
       setConnections(conns.filter(c => c.type !== 0))
       setRuleGroups(groups)
     } catch {
-      toast({ variant: 'error', message: 'Failed to load tag exclusions.' })
+      toast({ type: 'error', title: 'Error', message: 'Failed to load tag exclusions.' })
     } finally {
       setLoading(false)
     }
@@ -161,9 +161,9 @@ function TagExclusionsTab() {
     try {
       await exclusionsApi.deleteTag(id)
       setTagExclusions(prev => prev.filter(t => t.id !== id))
-      toast({ variant: 'success', message: 'Tag exclusion removed.' })
+      toast({ type: 'success', title: 'Success', message: 'Tag exclusion removed.' })
     } catch {
-      toast({ variant: 'error', message: 'Failed to remove tag exclusion.' })
+      toast({ type: 'error', title: 'Error', message: 'Failed to remove tag exclusion.' })
     } finally {
       setDeletingId(null)
     }
@@ -172,13 +172,13 @@ function TagExclusionsTab() {
   const handleAdded = (newExclusion: TagExclusionResponse) => {
     setTagExclusions(prev => [...prev, newExclusion])
     setShowAdd(false)
-    toast({ variant: 'success', message: `Tag "${newExclusion.tagName}" added as exclusion.` })
+    toast({ type: 'success', title: 'Success', message: `Tag "${newExclusion.tagName}" added as exclusion.` })
   }
 
   if (loading) {
     return (
       <div className="excl-empty">
-        <Spinner size={24} />
+        <Spinner size="lg" />
       </div>
     )
   }
@@ -287,7 +287,7 @@ function AddTagExclusionModal({
       const data = await connectionsApi.getTags(connId)
       setTags(data)
     } catch {
-      toast({ variant: 'error', message: 'Failed to fetch tags from connection.' })
+      toast({ type: 'error', title: 'Error', message: 'Failed to fetch tags from connection.' })
     } finally {
       setTagsLoading(false)
     }
@@ -320,7 +320,7 @@ function AddTagExclusionModal({
       })
       onAdded(result)
     } catch {
-      toast({ variant: 'error', message: 'Failed to create tag exclusion.' })
+      toast({ type: 'error', title: 'Error', message: 'Failed to create tag exclusion.' })
     } finally {
       setSaving(false)
     }
@@ -332,7 +332,7 @@ function AddTagExclusionModal({
     <>
       <Button variant="ghost" onClick={onClose}>Cancel</Button>
       <Button variant="primary" disabled={!canSave} onClick={handleSave}>
-        {saving ? <Spinner size={14} /> : <Plus size={14} weight="bold" />}
+        {saving ? <Spinner size="sm" /> : <Plus size={14} weight="bold" />}
         Add Exclusion
       </Button>
     </>
@@ -358,7 +358,7 @@ function AddTagExclusionModal({
         <div className="excl-field">
           <label className="excl-label">Tag</label>
           {tagsLoading ? (
-            <div className="excl-select-loading"><Spinner size={16} /> Loading tags…</div>
+            <div className="excl-select-loading"><Spinner size="sm" /> Loading tags…</div>
           ) : (
             <select
               className="excl-select"

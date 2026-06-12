@@ -75,6 +75,8 @@ describe('RulesPage Component', () => {
         isEnabled: true,
         cronOverride: null,
         action: 'DeleteAndUnmonitor',
+        targetQualityProfileId: null,
+        targetQualityProfileName: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         conditions: [],

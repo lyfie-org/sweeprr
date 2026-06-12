@@ -54,6 +54,7 @@ describe('SweepPage Component', () => {
       posterBackupDir: '/config/poster-backups',
       jellyfinSessionAlertsEnabled: true,
       preSweepBroadcastEnabled: true,
+      publicBaseUrl: null,
     })
     vi.mocked(sweepApi.getSummary).mockResolvedValue({
       pendingCount: 2,
