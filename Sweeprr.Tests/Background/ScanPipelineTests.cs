@@ -162,6 +162,8 @@ public class ScanPipelineTests : IDisposable
         services.AddScoped<IMediaPopulationService>(_ => new FakeMediaPopulationService(mediaItems));
         services.AddScoped<IRuleEvaluator>(_ => new FakeRuleEvaluator(matchAll));
         services.AddSingleton(Channel.CreateUnbounded<byte>());
+        services.AddSingleton<INotificationService>(new NotificationService(
+            Channel.CreateUnbounded<NotificationDispatchRequest>(), NullLogger<NotificationService>.Instance));
         services.AddScoped<IOverlayRenderingService, FakeOverlayRenderingService>();
 
         var sp = services.BuildServiceProvider();

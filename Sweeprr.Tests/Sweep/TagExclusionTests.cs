@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Sweeprr.API.Data;
 using Sweeprr.API.Models;
 using Sweeprr.API.Services;
@@ -197,8 +198,11 @@ public class TagExclusionTests : IDisposable
 
         var channel = Channel.CreateUnbounded<byte>();
         var overlay = new FakeOverlayRenderingService();
+        var notifications = new NotificationService(
+            Channel.CreateUnbounded<NotificationDispatchRequest>(),
+            NullLogger<NotificationService>.Instance);
 
-        return (new SweepQueueService(db, channel, overlay), db);
+        return (new SweepQueueService(db, channel, overlay, notifications), db);
     }
 
     private sealed class FakeOverlayRenderingService : IOverlayRenderingService

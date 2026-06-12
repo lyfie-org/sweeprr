@@ -14,4 +14,5 @@ public sealed record SettingsDto(
     bool PosterOverlaysEnabled,
     string PosterBackupDir,
     bool JellyfinSessionAlertsEnabled,
-    bool PreSweepBroadcastEnabled);
+    bool PreSweepBroadcastEnabled,
+    string? PublicBaseUrl);

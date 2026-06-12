@@ -16,6 +16,7 @@ public class SweeprrDbContext(DbContextOptions<SweeprrDbContext> options) : DbCo
     public DbSet<TagExclusion> TagExclusions => Set<TagExclusion>();
     public DbSet<PlaybackActivity> PlaybackActivities => Set<PlaybackActivity>();
     public DbSet<SweeprrApiKey> SweeprrApiKeys => Set<SweeprrApiKey>();
+    public DbSet<NotificationSetting> NotificationSettings => Set<NotificationSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -16,6 +16,7 @@ public static class AuthExtensions
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer()
+            .AddJwtBearer("ExtensionPortal", _ => { })
             .AddScheme<ApiKeyAuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", _ => { });
 
         // Configure JwtBearerOptions via factory so JwtKeyProvider is properly injected —
@@ -33,6 +34,30 @@ public static class AuthExtensions
                         ValidIssuer = "sweeprr",
                         ValidateAudience = true,
                         ValidAudience = "sweeprr",
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        ClockSkew = TimeSpan.FromMinutes(2),
+                        IssuerSigningKeyResolver = (_, _, _, _) => [keyProvider.GetKey()]
+                    };
+                });
+        });
+
+        // "ExtensionPortal" is a separate named scheme/issuer/audience so extension-portal
+        // tokens (Story 10.4) can never authenticate against admin/API-key-gated endpoints,
+        // and vice versa, even though both are signed with the same JwtKeyProvider key.
+        services.AddSingleton<IConfigureOptions<JwtBearerOptions>>(sp =>
+        {
+            var keyProvider = sp.GetRequiredService<JwtKeyProvider>();
+            return new ConfigureNamedOptions<JwtBearerOptions>(
+                "ExtensionPortal",
+                options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = "sweeprr-extension-portal",
+                        ValidateAudience = true,
+                        ValidAudience = "sweeprr-extension-portal",
                         ValidateLifetime = true,
                         ValidateIssuerSigningKey = true,
                         ClockSkew = TimeSpan.FromMinutes(2),
@@ -76,6 +101,12 @@ public static class AuthExtensions
                 .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme, "ApiKey")
                 .RequireAuthenticatedUser()
                 .AddRequirements(new ScopeRequirement(ApiKeyScopes.Admin)));
+
+            // Isolated from the admin/API-key schemes above — only an "ExtensionPortal"-issued
+            // token can satisfy this policy (Story 10.4).
+            options.AddPolicy("ExtensionPortal", p => p
+                .AddAuthenticationSchemes("ExtensionPortal")
+                .RequireAuthenticatedUser());
         });
 
         return services;

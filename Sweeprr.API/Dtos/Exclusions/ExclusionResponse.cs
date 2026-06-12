@@ -7,4 +7,5 @@ public sealed record ExclusionResponse(
     DateTime CreatedAt,
     int? RuleGroupId,
     string? RuleGroupName,
-    DateTime? ExpiresAt);
+    DateTime? ExpiresAt,
+    string? CreatedBy);

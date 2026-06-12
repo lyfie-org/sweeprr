@@ -117,6 +117,15 @@ builder.Services.AddHostedService<ExpiredExclusionCleanupWorker>();
 builder.Services.AddScoped<IPlaybackReportingService, PlaybackReportingService>();
 builder.Services.AddHostedService<PlaybackReportingBackfillWorker>();
 
+// Notification pipeline (Story 11.1): sweep/scan/WS code paths enqueue onto this channel via
+// INotificationService (non-blocking), NotificationDispatchWorker drains it and performs the
+// actual webhook HTTP calls so delivery failures never affect the sweep/scan pipeline.
+builder.Services.AddSingleton(Channel.CreateUnbounded<NotificationDispatchRequest>());
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddSingleton<INotificationProvider, DiscordNotificationProvider>();
+builder.Services.AddSingleton<INotificationProvider, GenericWebhookNotificationProvider>();
+builder.Services.AddHostedService<NotificationDispatchWorker>();
+
 // Channel used to signal JellyfinCurationWarningSyncService when the sweep queue changes.
 // Bounded(1) + DropOldest: multiple rapid writes collapse to a single sync run.
 builder.Services.AddSingleton(Channel.CreateBounded<byte>(new BoundedChannelOptions(1)
@@ -134,6 +143,14 @@ builder.Services.AddSingleton<IJellyfinWebSocketStatus>(
     sp => sp.GetRequiredService<JellyfinWebSocketService>());
 builder.Services.AddHostedService(
     sp => sp.GetRequiredService<JellyfinWebSocketService>());
+
+// CORS policy for anonymous endpoints fetched cross-origin — the Jellyfin in-UI client
+// script (Story 10.5) runs on Jellyfin's domain and calls /api/public/* on Sweeprr's.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("PublicApi", policy =>
+        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+});
 
 // Rate limiter: fixed window, 10 attempts / 60 s per IP — applied to POST /api/auth/login.
 builder.Services.AddRateLimiter(options =>
@@ -192,6 +209,8 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.UseRouting();
 
+app.UseCors("PublicApi");
+
 // Step 1 — SPA-like catch-all for browser navigation (unmatched routes)
 // Placed after UseRouting so GetEndpoint() works, but before UseAuthentication/UseAuthorization
 // so unauthorized users don't get blocked with 401 when navigating to unmatched endpoints.
@@ -200,7 +219,18 @@ app.Use(async (context, next) =>
     if (context.GetEndpoint() == null)
     {
         var acceptHeader = context.Request.Headers.Accept.ToString();
-        if (acceptHeader.Contains("text/html", StringComparison.OrdinalIgnoreCase))
+        var isHtmlRequest = acceptHeader.Contains("text/html", StringComparison.OrdinalIgnoreCase);
+
+        // Public "Request Extension" portal (Story 10.4) — serve the SPA shell so React
+        // Router can render /extend without requiring a Sweeprr admin session.
+        if (isHtmlRequest && context.Request.Path.StartsWithSegments("/extend"))
+        {
+            context.Response.ContentType = "text/html";
+            await context.Response.SendFileAsync(app.Environment.WebRootFileProvider.GetFileInfo("index.html"));
+            return;
+        }
+
+        if (isHtmlRequest)
         {
             context.Response.Redirect("/scalar/v1");
         }

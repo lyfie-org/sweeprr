@@ -13,5 +13,11 @@ public class Exclusion
     /// <summary>Null = permanent. Non-null = expires at this UTC timestamp.</summary>
     public DateTime? ExpiresAt { get; set; }
 
+    /// <summary>
+    /// Jellyfin username that requested this exclusion via the public extension portal
+    /// (Story 10.4). Null for admin-created or system-generated exclusions.
+    /// </summary>
+    public string? CreatedBy { get; set; }
+
     public RuleGroup? RuleGroup { get; set; }
 }

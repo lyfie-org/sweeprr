@@ -8,6 +8,7 @@ export interface ExclusionResponse {
   ruleGroupId: number | null
   ruleGroupName: string | null
   expiresAt: string | null
+  createdBy: string | null
 }
 
 export interface TagExclusionRequest {

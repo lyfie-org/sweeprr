@@ -11,15 +11,18 @@ public sealed class SweepQueueService : ISweepQueueService
     private readonly SweeprrDbContext        _db;
     private readonly ChannelWriter<byte>     _syncTrigger;
     private readonly IOverlayRenderingService _overlayService;
+    private readonly INotificationService    _notifications;
 
     public SweepQueueService(
         SweeprrDbContext db,
         Channel<byte> syncChannel,
-        IOverlayRenderingService overlayService)
+        IOverlayRenderingService overlayService,
+        INotificationService notifications)
     {
         _db             = db;
         _syncTrigger    = syncChannel.Writer;
         _overlayService = overlayService;
+        _notifications  = notifications;
     }
 
     public async Task<PagedResponse<SweepItemResponse>> QueryAsync(
@@ -254,7 +257,67 @@ public sealed class SweepQueueService : ISweepQueueService
         foreach (var created in newItems)
             await _overlayService.ApplyOverlayAsync(created, "Leaving Soon", ct);
 
+        if (newItems.Count > 0)
+        {
+            var ruleGroupName = await _db.RuleGroups
+                .Where(rg => rg.Id == ruleGroupId)
+                .Select(rg => rg.Name)
+                .FirstOrDefaultAsync(ct) ?? $"#{ruleGroupId}";
+
+            _notifications.Notify(NotificationTrigger.PendingItems, new NotificationPayload(
+                NotificationTrigger.PendingItems,
+                "📋 New Items Pending Review",
+                [
+                    ("Rule Group", ruleGroupName),
+                    ("New Items", newItems.Count.ToString()),
+                ],
+                new { ruleGroupId, ruleGroupName, newItemsCount = newItems.Count },
+                DateTimeOffset.UtcNow));
+        }
+
         return upsertCount;
+    }
+
+    public async Task<ExtendResult> ExtendAsync(
+        string mediaServerItemId, string jellyfinUsername, int requestedDays, CancellationToken ct = default)
+    {
+        var item = await _db.SweepItems
+            .FirstOrDefaultAsync(s => s.MediaServerItemId == mediaServerItemId
+                && (s.Status == SweepItemStatus.Pending || s.Status == SweepItemStatus.Approved), ct);
+
+        if (item is null)
+            return new ExtendResult.NotQueued();
+
+        var now = DateTime.UtcNow;
+
+        var recentlyExtended = await _db.Exclusions.AnyAsync(e =>
+            e.MediaServerItemId == mediaServerItemId
+            && e.CreatedBy == jellyfinUsername
+            && e.CreatedAt > now.AddDays(-7), ct);
+
+        if (recentlyExtended)
+            return new ExtendResult.AbuseLimited();
+
+        var days = Math.Clamp(requestedDays, 1, 14);
+
+        var exclusion = new Exclusion
+        {
+            MediaServerItemId = mediaServerItemId,
+            Reason = $"Extended {days}d by Jellyfin user '{jellyfinUsername}' via extension portal",
+            CreatedAt = now,
+            RuleGroupId = null,
+            ExpiresAt = now.AddDays(days),
+            CreatedBy = jellyfinUsername,
+        };
+        _db.Exclusions.Add(exclusion);
+        _db.SweepItems.Remove(item);
+
+        await _db.SaveChangesAsync(ct);
+        _syncTrigger.TryWrite(1);
+
+        await _overlayService.RestoreOriginalAsync(item, ct);
+
+        return new ExtendResult.Success(exclusion);
     }
 
     public async Task<SweepItemResponse?> SkipAsync(

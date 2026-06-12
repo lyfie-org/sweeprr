@@ -71,4 +71,12 @@ public class GlobalSettings
     /// Default is <c>true</c>.
     /// </summary>
     public bool PreSweepBroadcastEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Externally-reachable base URL for this Sweeprr instance (e.g. <c>https://sweeprr.example.com</c>),
+    /// used to build links embedded in poster overlays (e.g. the extension-request QR code) and
+    /// other user-facing links that must work from outside the admin network. Null/empty disables
+    /// these features.
+    /// </summary>
+    public string? PublicBaseUrl { get; set; }
 }

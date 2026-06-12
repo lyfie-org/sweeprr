@@ -1,7 +1,12 @@
+using System.Reflection;
 using System.Text.Json;
+using System.Threading.Channels;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sweeprr.API.Integrations.Jellyfin.Models;
 using Sweeprr.API.Integrations.Jellyfin.WebSocket;
+using Sweeprr.API.Models;
 using Sweeprr.API.Services;
 
 namespace Sweeprr.Tests.Integrations;
@@ -415,5 +420,60 @@ public class JellyfinWebSocketServiceSessionsTests
         service.HandleSessionsMessage(ParseJson("null"), 1, CancellationToken.None);
 
         Assert.False(fake.Called.IsCompleted);
+    }
+}
+
+// ── JellyfinWebSocketService — connection-error notification (Story 11.1) ───
+
+public class JellyfinWebSocketServiceConnectionErrorTests
+{
+    private class DummyPlaybackActivityWriter : IPlaybackActivityWriter
+    {
+        public void Enqueue(string itemId, string userId, JellyfinUserData data, string username) {}
+        public Task ForceFlushAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task PruneOldActivitiesAsync(int ageLimitDays, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class FakeSessionAlertService : IJellyfinSessionAlertService
+    {
+        public Task ProcessSessionsUpdateAsync(
+            int connectionId, IReadOnlyList<JellyfinSession> sessions, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task BroadcastPreSweepWarningAsync(CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Invokes the private NotifyConnectionError(int) helper directly. The full reconnect/backoff
+    /// loop that calls it requires a live Jellyfin WebSocket and is covered by integration / E2E
+    /// tests (see file header) — this test verifies the notification hook point itself: that it
+    /// enqueues a ConnectionError NotificationDispatchRequest via INotificationService.
+    /// </summary>
+    [Fact]
+    public void NotifyConnectionError_EnqueuesConnectionErrorNotification()
+    {
+        var channel = Channel.CreateUnbounded<NotificationDispatchRequest>();
+
+        var services = new ServiceCollection();
+        services.AddSingleton(channel);
+        services.AddSingleton<ILogger<NotificationService>>(NullLogger<NotificationService>.Instance);
+        services.AddScoped<INotificationService, NotificationService>();
+        using var provider = services.BuildServiceProvider();
+
+        var service = new JellyfinWebSocketService(
+            scopeFactory:  provider.GetRequiredService<IServiceScopeFactory>(),
+            cache:         new PlaystateCache(),
+            writer:        new DummyPlaybackActivityWriter(),
+            sessionAlerts: new FakeSessionAlertService(),
+            logger:        NullLogger<JellyfinWebSocketService>.Instance);
+
+        var method = typeof(JellyfinWebSocketService)
+            .GetMethod("NotifyConnectionError", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+        method.Invoke(service, [5]);
+
+        Assert.True(channel.Reader.TryRead(out var request));
+        Assert.Equal(NotificationTrigger.ConnectionError, request!.Trigger);
+        Assert.Equal(NotificationTrigger.ConnectionError, request.Payload.Trigger);
+        Assert.Contains(request.Payload.Fields, f => f.Name == "Failed Attempts" && f.Value == "5");
     }
 }

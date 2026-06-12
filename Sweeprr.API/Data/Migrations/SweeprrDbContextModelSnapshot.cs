@@ -15,7 +15,7 @@ namespace Sweeprr.API.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "9.0.16");
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.17");
 
             modelBuilder.Entity("Sweeprr.API.Models.ActivityLog", b =>
                 {
@@ -57,6 +57,9 @@ namespace Sweeprr.API.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("ExpiresAt")
@@ -143,12 +146,55 @@ namespace Sweeprr.API.Data.Migrations
                     b.Property<bool>("PreSweepBroadcastEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("PublicBaseUrl")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("GlobalSettings", t =>
                         {
                             t.HasCheckConstraint("CK_GlobalSettings_SingleRow", "Id = 1");
                         });
+                });
+
+            modelBuilder.Entity("Sweeprr.API.Models.NotificationSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProviderType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("TriggerOnConnectionError")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("TriggerOnFailsafe")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("TriggerOnPendingItems")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("TriggerOnSweepComplete")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("WebhookUrlEncrypted")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("NotificationSettings");
                 });
 
             modelBuilder.Entity("Sweeprr.API.Models.PlaybackActivity", b =>

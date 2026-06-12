@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -423,9 +424,14 @@ public class SweepExecutorTests : IDisposable
         var matcher = new MediaMatchingService();
         var failsafe = new FailsafeService();
 
+        var notifications = new NotificationService(
+            Channel.CreateUnbounded<NotificationDispatchRequest>(),
+            NullLogger<NotificationService>.Instance);
+
         var executor = new SweepExecutor(
             db2, clientFactory, matcher, failsafe,
             new FakeOverlayRenderingService(),
+            notifications,
             NullLogger<SweepExecutor>.Instance);
 
         return (executor, db2);

@@ -75,6 +75,16 @@ public sealed class SchedulerHostedService : BackgroundService
     public DateTimeOffset? GetNextScheduledRun()
         => _schedules.Count == 0 ? null : _schedules.Min(s => s.NextFire);
 
+    /// <summary>
+    /// Returns the next scheduled fire time for a specific rule group, or <c>null</c> if
+    /// that group has no loaded schedule (disabled, invalid cron, or not yet loaded).
+    /// Used by the public extension portal (Story 10.4) to compute "days remaining".
+    /// </summary>
+    public DateTimeOffset? GetNextRunForGroup(int ruleGroupId)
+        => _schedules.Where(s => s.RuleGroupId == ruleGroupId)
+                      .Select(s => (DateTimeOffset?)s.NextFire)
+                      .FirstOrDefault();
+
     // ── Manual trigger (called from the controller) ─────────────────────────
 
     public async Task<ScanResult> TriggerScanAsync(int ruleGroupId, CancellationToken ct = default)

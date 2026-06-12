@@ -56,6 +56,20 @@ public sealed class JellyfinClient : ClientBase
             (IReadOnlyList<JellyfinUser>)Array.ConvertAll(dtos, JellyfinUser.From));
     }
 
+    /// <summary>
+    /// Authenticates a Jellyfin user by username/password via /Users/AuthenticateByName.
+    /// Used by the public extension portal (Story 10.4) to verify the requester owns a
+    /// valid Jellyfin account without granting them an admin session. Invalid credentials
+    /// surface as <see cref="HttpResult{T}.DefinitiveFailure"/> with StatusCode 401.
+    /// </summary>
+    public async Task<HttpResult<JellyfinAuthResult>> AuthenticateByNameAsync(
+        string username, string password, CancellationToken ct = default)
+    {
+        var body = new { Username = username, Pw = password };
+        var result = await PostAsync<JellyfinAuthenticateResultDto>("/Users/AuthenticateByName", body, ct);
+        return result.Map(JellyfinAuthResult.From);
+    }
+
     // ── System info ──────────────────────────────────────────────────────────
 
     /// <summary>

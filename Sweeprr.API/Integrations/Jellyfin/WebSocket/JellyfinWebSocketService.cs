@@ -60,6 +60,10 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
     private volatile WsConnectionState _state = WsConnectionState.Disconnected;
     private DateTimeOffset? _lastConnectedAt;
 
+    // Set once a ConnectionError notification has fired for the current outage;
+    // reset on the next successful connect so a fresh outage can notify again.
+    private volatile bool _connectionErrorNotified;
+
     // Updated from ForceKeepAlive messages; read by the keep-alive loop
     private volatile int _keepAliveInterval = 30;
 
@@ -125,9 +129,10 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
 
                 await ws.ConnectAsync(wsUri, stoppingToken).ConfigureAwait(false);
 
-                _state           = WsConnectionState.Connected;
-                _lastConnectedAt = DateTimeOffset.UtcNow;
-                backoffIndex     = 0;
+                _state                    = WsConnectionState.Connected;
+                _lastConnectedAt          = DateTimeOffset.UtcNow;
+                backoffIndex              = 0;
+                _connectionErrorNotified  = false;
 
                 _logger.LogInformation("Jellyfin WebSocket connected.");
 
@@ -177,6 +182,12 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
             _logger.LogInformation(
                 "Jellyfin WebSocket: reconnecting in {Seconds}s (attempt {Attempt})…",
                 (int)delay.TotalSeconds, backoffIndex);
+
+            if (backoffIndex >= BackoffDelays.Length && !_connectionErrorNotified)
+            {
+                _connectionErrorNotified = true;
+                NotifyConnectionError(backoffIndex);
+            }
 
             await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
         }
@@ -558,6 +569,36 @@ public sealed class JellyfinWebSocketService : BackgroundService, IJellyfinWebSo
         finally
         {
             _sendLock.Release();
+        }
+    }
+
+    // ── Notifications ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Fires a ConnectionError notification after repeated reconnect failures.
+    /// Resolved from a fresh scope since this service is a singleton and
+    /// <see cref="INotificationService"/> is scoped. Failures are logged only.
+    /// </summary>
+    private void NotifyConnectionError(int failedAttempts)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var notifications = scope.ServiceProvider.GetRequiredService<INotificationService>();
+
+            notifications.Notify(NotificationTrigger.ConnectionError, new NotificationPayload(
+                NotificationTrigger.ConnectionError,
+                "🔌 Jellyfin Connection Lost",
+                [
+                    ("Status", "Unable to reconnect to the Jellyfin WebSocket after repeated attempts."),
+                    ("Failed Attempts", failedAttempts.ToString()),
+                ],
+                new { service = "Jellyfin", failedAttempts },
+                DateTimeOffset.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to dispatch connection-error notification.");
         }
     }
 

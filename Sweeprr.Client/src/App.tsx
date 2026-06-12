@@ -3,6 +3,7 @@ import { AppShell } from './components/layout/AppShell'
 import { ProtectedRoute } from './components/router/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
 import { SetupPage } from './pages/SetupPage'
+import { ExtendPage } from './pages/ExtendPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { SweepPage } from './pages/SweepPage'
 import { MediaPage } from './pages/MediaPage'
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
 
   { path: '/login', element: <LoginPage /> },
   { path: '/setup', element: <SetupPage /> },
+  { path: '/extend', element: <ExtendPage /> },
 
   {
     element: <ProtectedRoute />,

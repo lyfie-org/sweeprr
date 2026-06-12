@@ -10,6 +10,8 @@ import { settingsApi, type SettingsDto, type UpdateSettingsRequest } from '../ap
 import { systemApi } from '../api/system'
 import { ApiError } from '../api/client'
 import { ApiKeysSection } from '../components/settings/ApiKeysSection'
+import { ClientScriptSection } from '../components/settings/ClientScriptSection'
+import { NotificationsSection } from '../components/settings/NotificationsSection'
 import {
   Button,
   Card,
@@ -67,6 +69,7 @@ interface FormState {
   posterBackupDir: string
   jellyfinSessionAlertsEnabled: boolean
   preSweepBroadcastEnabled: boolean
+  publicBaseUrl: string
 }
 
 function settingsToForm(s: SettingsDto): FormState {
@@ -91,6 +94,7 @@ function settingsToForm(s: SettingsDto): FormState {
     posterBackupDir: s.posterBackupDir,
     jellyfinSessionAlertsEnabled: s.jellyfinSessionAlertsEnabled,
     preSweepBroadcastEnabled: s.preSweepBroadcastEnabled,
+    publicBaseUrl: s.publicBaseUrl ?? '',
   }
 }
 
@@ -195,6 +199,7 @@ export function SettingsPage() {
       posterBackupDir: form.posterBackupDir.trim() || '/config/poster-backups',
       jellyfinSessionAlertsEnabled: form.jellyfinSessionAlertsEnabled,
       preSweepBroadcastEnabled: form.preSweepBroadcastEnabled,
+      publicBaseUrl: form.publicBaseUrl.trim(),
     }
 
     if (form.libCapEnabled) {
@@ -547,6 +552,9 @@ export function SettingsPage() {
           </div>
         )}
 
+        {/* ── Notifications ── */}
+        <NotificationsSection />
+
         {/* ── API Keys ── */}
         <ApiKeysSection />
 
@@ -561,6 +569,16 @@ export function SettingsPage() {
                 label="Leaving Soon collection sync"
                 description="Automatically keep a Jellyfin BoxSet collection called &quot;Sweeprr - Leaving Soon&quot; in sync with your Sweep Queue. Jellyfin users will see this collection populated with media that is pending removal."
                 disabled={saving}
+              />
+
+              <Input
+                label="Public base URL"
+                value={form.publicBaseUrl}
+                onChange={e => setF('publicBaseUrl', e.target.value)}
+                placeholder="https://sweeprr.example.com"
+                disabled={saving}
+                helper="Externally-reachable URL for this Sweeprr instance. When set, &quot;Leaving Soon&quot; poster overlays include a QR code linking to an extension-request page for that item. Leave blank to disable."
+                style={{ fontFamily: 'var(--font-mono)' }}
               />
 
               <Toggle
@@ -607,6 +625,9 @@ export function SettingsPage() {
             </div>
           </CardBody>
         </Card>
+
+        {/* ── Client Script Injection ── */}
+        <ClientScriptSection publicBaseUrl={settings?.publicBaseUrl ?? null} />
 
         {/* ── Theme ── */}
         <Card>

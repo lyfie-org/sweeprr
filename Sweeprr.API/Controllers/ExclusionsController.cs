@@ -35,7 +35,8 @@ public class ExclusionsController : ControllerBase
                 e.CreatedAt,
                 e.RuleGroupId,
                 e.RuleGroup != null ? e.RuleGroup.Name : null,
-                e.ExpiresAt))
+                e.ExpiresAt,
+                e.CreatedBy))
             .ToListAsync(ct);
 
         return Ok(items);

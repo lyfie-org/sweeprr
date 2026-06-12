@@ -109,6 +109,9 @@ public sealed class SettingsController : ControllerBase
         if (req.PreSweepBroadcastEnabled.HasValue)
             s.PreSweepBroadcastEnabled = req.PreSweepBroadcastEnabled.Value;
 
+        if (req.PublicBaseUrl is not null)
+            s.PublicBaseUrl = string.IsNullOrWhiteSpace(req.PublicBaseUrl) ? null : req.PublicBaseUrl.TrimEnd('/');
+
         await _db.SaveChangesAsync(ct);
         return Ok(ToDto(s));
     }
@@ -127,7 +130,8 @@ public sealed class SettingsController : ControllerBase
         s.PosterOverlaysEnabled,
         s.PosterBackupDir,
         s.JellyfinSessionAlertsEnabled,
-        s.PreSweepBroadcastEnabled);
+        s.PreSweepBroadcastEnabled,
+        s.PublicBaseUrl);
 
     private static bool IsValidCron(string expression)
     {

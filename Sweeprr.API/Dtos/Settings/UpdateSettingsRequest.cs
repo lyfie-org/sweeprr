@@ -54,4 +54,10 @@ public sealed class UpdateSettingsRequest
     /// sessions 10 minutes before each scheduled sweep run.
     /// </summary>
     public bool? PreSweepBroadcastEnabled { get; init; }
+
+    /// <summary>
+    /// Externally-reachable base URL for this Sweeprr instance, used to build links embedded
+    /// in poster overlays (e.g. the extension-request QR code). Pass an empty string to clear.
+    /// </summary>
+    public string? PublicBaseUrl { get; init; }
 }

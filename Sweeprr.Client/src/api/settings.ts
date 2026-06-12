@@ -15,6 +15,7 @@ export interface SettingsDto {
   posterBackupDir: string
   jellyfinSessionAlertsEnabled: boolean
   preSweepBroadcastEnabled: boolean
+  publicBaseUrl: string | null
 }
 
 export interface UpdateSettingsRequest {
@@ -34,6 +35,7 @@ export interface UpdateSettingsRequest {
   posterBackupDir?: string
   jellyfinSessionAlertsEnabled?: boolean
   preSweepBroadcastEnabled?: boolean
+  publicBaseUrl?: string
 }
 
 export const settingsApi = {

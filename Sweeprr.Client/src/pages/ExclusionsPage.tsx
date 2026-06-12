@@ -80,6 +80,7 @@ function MediaExclusionsTab() {
             <th>Reason</th>
             <th>Scope</th>
             <th>Expires</th>
+            <th>Created By</th>
             <th>Added</th>
             <th></th>
           </tr>
@@ -98,6 +99,11 @@ function MediaExclusionsTab() {
                 {e.expiresAt
                   ? new Date(e.expiresAt).toLocaleDateString()
                   : <span className="excl-muted">Permanent</span>}
+              </td>
+              <td>
+                {e.createdBy
+                  ? <Badge variant="info">{e.createdBy}</Badge>
+                  : <span className="excl-muted">Admin</span>}
               </td>
               <td className="excl-muted">{new Date(e.createdAt).toLocaleDateString()}</td>
               <td>

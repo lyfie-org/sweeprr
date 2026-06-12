@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Data;
 using Sweeprr.API.Dtos.Sweep;
@@ -21,6 +22,7 @@ public sealed class SweepExecutor : ISweepExecutor
     private readonly IMediaMatchingService     _matcher;
     private readonly IFailsafeService          _failsafe;
     private readonly IOverlayRenderingService  _overlayService;
+    private readonly INotificationService      _notifications;
     private readonly ILogger<SweepExecutor>    _logger;
 
     public SweepExecutor(
@@ -29,6 +31,7 @@ public sealed class SweepExecutor : ISweepExecutor
         IMediaMatchingService matcher,
         IFailsafeService failsafe,
         IOverlayRenderingService overlayService,
+        INotificationService notifications,
         ILogger<SweepExecutor> logger)
     {
         _db             = db;
@@ -36,12 +39,15 @@ public sealed class SweepExecutor : ISweepExecutor
         _matcher        = matcher;
         _failsafe       = failsafe;
         _overlayService = overlayService;
+        _notifications  = notifications;
         _logger         = logger;
     }
 
     public async Task<ExecuteSweepResult> ExecuteAsync(
         ExecuteSweepRequest request, CancellationToken ct = default)
     {
+        var stopwatch = Stopwatch.StartNew();
+
         var settings = await _db.GlobalSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct)
             ?? new GlobalSettings();
 
@@ -93,6 +99,12 @@ public sealed class SweepExecutor : ISweepExecutor
                 Message = preRunGate.Reason,
             });
             await _db.SaveChangesAsync(ct);
+            _notifications.Notify(NotificationTrigger.FailsafeTripped, new NotificationPayload(
+                NotificationTrigger.FailsafeTripped,
+                "🛑 Failsafe Tripped",
+                [("Reason", preRunGate.Reason), ("Items Affected", items.Count.ToString())],
+                new { reason = preRunGate.Reason, itemsAffected = items.Count },
+                DateTimeOffset.UtcNow));
             return new ExecuteSweepResult(0, 0, counters.FailsafeSkipped, 0, isDryRun);
         }
 
@@ -114,6 +126,12 @@ public sealed class SweepExecutor : ISweepExecutor
                     Message = groupGate.Reason,
                 });
                 await _db.SaveChangesAsync(ct);
+                _notifications.Notify(NotificationTrigger.FailsafeTripped, new NotificationPayload(
+                    NotificationTrigger.FailsafeTripped,
+                    "🛑 Failsafe Tripped",
+                    [("Reason", groupGate.Reason), ("Items Affected", grp.Items.Count.ToString())],
+                    new { reason = groupGate.Reason, itemsAffected = grp.Items.Count },
+                    DateTimeOffset.UtcNow));
                 continue;
             }
 
@@ -152,6 +170,28 @@ public sealed class SweepExecutor : ISweepExecutor
                     : $"Sweep: {counters.Swept} swept, {counters.Failed} failed, {counters.FailsafeSkipped} skipped (failsafe), {counters.BytesRecovered / 1_073_741_824.0:F2} GB recovered",
             });
             await _db.SaveChangesAsync(ct);
+
+            var gbRecovered = counters.BytesRecovered / 1_073_741_824.0;
+            _notifications.Notify(NotificationTrigger.SweepComplete, new NotificationPayload(
+                NotificationTrigger.SweepComplete,
+                isDryRun ? "🧹 Dry-Run Sweep Complete" : "🧹 Sweep Complete",
+                [
+                    ("Swept", counters.Swept.ToString()),
+                    ("Failed", counters.Failed.ToString()),
+                    ("Skipped (Failsafe)", counters.FailsafeSkipped.ToString()),
+                    ("Recovered", $"{gbRecovered:F2} GB"),
+                    ("Duration", $"{stopwatch.Elapsed.TotalSeconds:F1}s"),
+                ],
+                new
+                {
+                    swept = counters.Swept,
+                    failed = counters.Failed,
+                    failsafeSkipped = counters.FailsafeSkipped,
+                    gbRecovered,
+                    durationMs = stopwatch.ElapsedMilliseconds,
+                    isDryRun,
+                },
+                DateTimeOffset.UtcNow));
         }
 
         // Restore poster overlays for any items that ended up as Failed

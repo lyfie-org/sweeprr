@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using QRCoder;
 using SkiaSharp;
 using Sweeprr.API.Data;
 using Sweeprr.API.Integrations;
@@ -45,7 +46,8 @@ public sealed class OverlayRenderingService : IOverlayRenderingService
             var backupPath = BackupPath(backupDir, item.MediaServerItemId);
             await File.WriteAllBytesAsync(backupPath, originalBytes, ct);
 
-            var overlayBytes = RenderOverlay(originalBytes, labelText);
+            var extendUrl = BuildExtendUrl(settings.PublicBaseUrl, item.MediaServerItemId);
+            var overlayBytes = RenderOverlay(originalBytes, labelText, extendUrl);
             if (overlayBytes is null)
             {
                 _logger.LogWarning("Overlay rendering failed for '{Title}' — backup retained", item.Title);
@@ -102,7 +104,7 @@ public sealed class OverlayRenderingService : IOverlayRenderingService
 
     // ── SkiaSharp rendering ──────────────────────────────────────────────────
 
-    private static byte[]? RenderOverlay(byte[] originalBytes, string labelText)
+    internal static byte[]? RenderOverlay(byte[] originalBytes, string labelText, string? extendUrl)
     {
         try
         {
@@ -112,8 +114,9 @@ public sealed class OverlayRenderingService : IOverlayRenderingService
             using var canvas = new SKCanvas(bitmap);
 
             // Red gradient banner occupying the bottom 18% of the image
-            var bannerTop  = bitmap.Height * 0.82f;
-            var bannerRect = new SKRect(0, bannerTop, bitmap.Width, bitmap.Height);
+            var bannerTop    = bitmap.Height * 0.82f;
+            var bannerRect   = new SKRect(0, bannerTop, bitmap.Width, bitmap.Height);
+            var bannerHeight = bannerRect.Height;
 
             using var gradientPaint = new SKPaint
             {
@@ -124,6 +127,38 @@ public sealed class OverlayRenderingService : IOverlayRenderingService
                     SKShaderTileMode.Clamp)
             };
             canvas.DrawRect(bannerRect, gradientPaint);
+
+            // Optional QR code in the banner's right edge, linking to the extension-request page.
+            // Reserves horizontal space so the label text below can shrink to avoid overlap.
+            var qrAreaWidth = 0f;
+            if (extendUrl is not null)
+            {
+                var padding = bitmap.Width * 0.02f;
+                var qrSize  = Math.Min(bitmap.Width * 0.16f, bannerHeight - padding * 2);
+
+                if (qrSize >= 40)
+                {
+                    using var qrBitmap = TryGenerateQrBitmap(extendUrl);
+                    if (qrBitmap is not null)
+                    {
+                        var qrRect = new SKRect(
+                            bitmap.Width - qrSize - padding,
+                            bannerTop + (bannerHeight - qrSize) / 2,
+                            bitmap.Width - padding,
+                            bannerTop + (bannerHeight - qrSize) / 2 + qrSize);
+
+                        // White backing so the QR code stays scannable against the red banner
+                        using var whitePaint = new SKPaint { Color = SKColors.White };
+                        canvas.DrawRect(qrRect, whitePaint);
+
+                        // Nearest-neighbor scaling keeps QR module edges crisp (no blur)
+                        using var qrPaint = new SKPaint { FilterQuality = SKFilterQuality.None };
+                        canvas.DrawBitmap(qrBitmap, qrRect, qrPaint);
+
+                        qrAreaWidth = qrSize + padding * 2;
+                    }
+                }
+            }
 
             // Text: bold, white, ~7% of image width in size
             using var textPaint = new SKPaint
@@ -139,9 +174,19 @@ public sealed class OverlayRenderingService : IOverlayRenderingService
                     SKFontStyleSlant.Upright),
                 size: bitmap.Width * 0.07f);
 
+            var textX = bitmap.Width * 0.05f;
+            var maxTextWidth = bitmap.Width - textX - qrAreaWidth;
+            if (maxTextWidth > 0)
+            {
+                using var measurePaint = new SKPaint { Typeface = font.Typeface, TextSize = font.Size };
+                var textWidth = measurePaint.MeasureText(labelText);
+                if (textWidth > maxTextWidth)
+                    font.Size *= maxTextWidth / textWidth;
+            }
+
             canvas.DrawText(
                 labelText,
-                bitmap.Width * 0.05f,
+                textX,
                 bitmap.Height * 0.94f,
                 font,
                 textPaint);
@@ -155,6 +200,29 @@ public sealed class OverlayRenderingService : IOverlayRenderingService
             return null;
         }
     }
+
+    /// <summary>
+    /// Generates a QR code for <paramref name="url"/> as an SKBitmap, or null if generation fails.
+    /// </summary>
+    internal static SKBitmap? TryGenerateQrBitmap(string url)
+    {
+        try
+        {
+            var generator = new QRCodeGenerator();
+            using var qrData = generator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+            var pngBytes = new PngByteQRCode(qrData).GetGraphic(10);
+            return SKBitmap.Decode(pngBytes);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? BuildExtendUrl(string? publicBaseUrl, string mediaServerItemId)
+        => string.IsNullOrWhiteSpace(publicBaseUrl)
+            ? null
+            : $"{publicBaseUrl.TrimEnd('/')}/extend?itemId={Uri.EscapeDataString(mediaServerItemId)}";
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
