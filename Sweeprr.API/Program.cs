@@ -56,19 +56,160 @@ builder.Services.AddOpenApi(options =>
             Description = "Enter JWT Bearer token."
         });
 
-        foreach (var operation in document.Paths.Values.SelectMany(p => p.Operations))
+        var endpointSummaries = new Dictionary<(string Method, string Path), string>()
         {
-            operation.Value.Security.Add(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+            { ("POST", "/api/auth/setup"), "Create the initial admin account (first-run only)" },
+            { ("POST", "/api/auth/login"), "Authenticate and receive a JWT access token (rate-limited)" },
+            { ("GET", "/api/auth/me"), "Retrieve the profile of the currently authenticated user" },
+            { ("GET", "/api/auth/status"), "Check whether this is a first-run instance" },
+            { ("GET", "/api/apikeys"), "List all generated API keys" },
+            { ("POST", "/api/apikeys"), "Generate a new API key" },
+            { ("DELETE", "/api/apikeys/{id}"), "Revoke/delete an API key" },
+            { ("GET", "/api/sweep"), "Query and paginate the active sweep queue" },
+            { ("GET", "/api/sweep/summary"), "Retrieve sweep item counts categorized by status" },
+            { ("GET", "/api/sweep/{id}"), "Retrieve a specific sweep item by its ID" },
+            { ("POST", "/api/sweep/{id}/approve"), "Approve a flagged item for deletion" },
+            { ("POST", "/api/sweep/{id}/ignore"), "Ignore an item (optionally creating a permanent exclusion)" },
+            { ("POST", "/api/sweep/{id}/skip"), "Temporarily skip an item" },
+            { ("POST", "/api/sweep/execute"), "Execute physical file deletions on all approved queue items" },
+            { ("POST", "/api/sweep/run"), "Manually trigger rule evaluation to populate the sweep queue" },
+            { ("GET", "/api/rulegroups"), "Retrieve all configured rule groups" },
+            { ("GET", "/api/rulegroups/{id}"), "Retrieve a specific rule group by ID" },
+            { ("GET", "/api/rulegroups/fields"), "Fetch available rule fields" },
+            { ("GET", "/api/rulegroups/tags"), "Proxy endpoint to fetch tags from Radarr/Sonarr for rule definitions" },
+            { ("POST", "/api/rulegroups"), "Create a new rule group" },
+            { ("PUT", "/api/rulegroups/{id}"), "Update rule group configuration/rules" },
+            { ("DELETE", "/api/rulegroups/{id}"), "Delete a rule group" },
+            { ("POST", "/api/rulegroups/test-rule"), "Test-evaluate a single rule on mock context" },
+            { ("POST", "/api/rulegroups/validate"), "Validate a rule group configuration for syntax errors" },
+            { ("GET", "/api/exclusions"), "Retrieve all media item exclusions (global or rule-scoped)" },
+            { ("DELETE", "/api/exclusions/{id}"), "Delete a media item exclusion" },
+            { ("GET", "/api/exclusions/tags"), "Retrieve all tag-based exclusions" },
+            { ("POST", "/api/exclusions/tags"), "Create a new tag exclusion" },
+            { ("DELETE", "/api/exclusions/tags/{id}"), "Delete a tag exclusion" },
+            { ("GET", "/api/media"), "Query, search, and paginate indexed media items" },
+            { ("GET", "/api/media/{id}/ruletrace"), "Retrieve a detailed audit trace explaining why rules matched or skipped a media item" },
+            { ("POST", "/api/media/queue-manual"), "Manually force-flag a media item into the sweep queue" },
+            { ("POST", "/api/media/exclude-bulk"), "Create bulk exclusions for multiple media items" },
+            { ("GET", "/api/playback/activity/{mediaServerItemId}"), "Fetch playback activity history for a specific media item" },
+            { ("GET", "/api/connections"), "Retrieve all external server connections" },
+            { ("GET", "/api/connections/{id}"), "Get connection details" },
+            { ("POST", "/api/connections"), "Create a new server connection" },
+            { ("PUT", "/api/connections/{id}"), "Update connection details" },
+            { ("DELETE", "/api/connections/{id}"), "Delete a server connection" },
+            { ("POST", "/api/connections/{id}/test"), "Test an existing server connection" },
+            { ("POST", "/api/connections/test-unsaved"), "Test connection settings before saving them" },
+            { ("GET", "/api/connections/{id}/qualityprofiles"), "Fetch quality profiles from Radarr/Sonarr" },
+            { ("GET", "/api/connections/{id}/tags"), "Fetch tags from Radarr/Sonarr" },
+            { ("GET", "/api/connections/{id}/diskspace"), "Fetch root paths and available disk space" },
+            { ("GET", "/api/settings"), "Retrieve global application settings" },
+            { ("PATCH", "/api/settings"), "Update global application settings" },
+            { ("GET", "/api/settings/backup"), "Get automated backup configuration" },
+            { ("PUT", "/api/settings/backup"), "Update backup configurations" },
+            { ("POST", "/api/settings/backup/trigger"), "Manually trigger a SQLite database backup" },
+            { ("GET", "/api/settings/backup/history"), "Retrieve past backup runs" },
+            { ("GET", "/api/settings/notification"), "Get webhook/notification destinations" },
+            { ("POST", "/api/settings/notification"), "Create a new notification destination" },
+            { ("PUT", "/api/settings/notification/{id}"), "Update a notification destination" },
+            { ("DELETE", "/api/settings/notification/{id}"), "Delete a notification destination" },
+            { ("POST", "/api/settings/notification/test"), "Test an unsaved notification configuration" },
+            { ("POST", "/api/settings/notification/{id}/test"), "Test an existing notification destination" },
+            { ("GET", "/api/dashboard/stats"), "Retrieve top-level KPIs" },
+            { ("GET", "/api/dashboard/activity"), "Fetch a log of recent curation activities" },
+            { ("GET", "/api/dashboard/sparkline"), "Get data points representing historical curation trends" },
+            { ("GET", "/api/system/info"), "Retrieve app version and build/release metadata" },
+            { ("GET", "/api/logs"), "Query and view server logs" },
+            { ("GET", "/api/logs/download"), "Download raw log files" },
+            { ("GET", "/api/health"), "Return simple health check status" },
+            { ("GET", "/api/jellyfin/status"), "Realtime WebSocket status representing session connections" },
+            { ("GET", "/api/jellyfin/client-script.js"), "Serving the in-UI Jellyfin integrations portal scripts" },
+            { ("POST", "/api/public/auth/jellyfin"), "Authenticate Jellyfin sessions for the in-UI script" },
+            { ("POST", "/api/public/extend"), "Process extension portal requests" },
+            { ("GET", "/api/public/media/{jellyfinItemId}/status"), "Fetch status indicators visible in Jellyfin UI overlays" }
+        };
+
+        foreach (var path in document.Paths)
+        {
+            var route = path.Key;
+            var normalizedRoute = route.StartsWith("/") ? route : "/" + route;
+
+            foreach (var operation in path.Value.Operations)
             {
-                [new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                var method = operation.Key;
+                var opValue = operation.Value;
+
+                opValue.Security.Add(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
                 {
-                    Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                    [new Microsoft.OpenApi.Models.OpenApiSecurityScheme
                     {
-                        Id = "Bearer",
-                        Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme
+                        Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                        {
+                            Id = "Bearer",
+                            Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme
+                        }
+                    }] = Array.Empty<string>()
+                });
+
+                // Override Summary if it exists in our exact lookup dictionary
+                var lookupKey = (method.ToString().ToUpperInvariant(), normalizedRoute.ToLowerInvariant());
+                if (endpointSummaries.TryGetValue(lookupKey, out var exactSummary))
+                {
+                    opValue.Summary = exactSummary;
+                }
+                else if (string.IsNullOrWhiteSpace(opValue.Summary))
+                {
+                    var parts = route.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                    var verb = method switch
+                    {
+                        Microsoft.OpenApi.Models.OperationType.Get => "Retrieve",
+                        Microsoft.OpenApi.Models.OperationType.Post => "Create or trigger",
+                        Microsoft.OpenApi.Models.OperationType.Put => "Update",
+                        Microsoft.OpenApi.Models.OperationType.Patch => "Partially update",
+                        Microsoft.OpenApi.Models.OperationType.Delete => "Delete",
+                        _ => method.ToString()
+                    };
+
+                    var entity = parts.Length > 1
+                        ? string.Join(" ", parts.Skip(1).Select(p => p.StartsWith('{') ? "" : p)).Trim()
+                        : (parts.Length > 0 ? parts[0] : "endpoint");
+
+                    if (string.IsNullOrWhiteSpace(entity))
+                    {
+                        entity = parts.Length > 0 ? parts[0] : "endpoint";
                     }
-                }] = Array.Empty<string>()
-            });
+
+                    if (entity.Length > 0)
+                    {
+                        entity = char.ToUpper(entity[0]) + entity.Substring(1);
+                    }
+
+                    opValue.Summary = $"{verb} {entity}";
+                }
+
+                if (string.IsNullOrWhiteSpace(opValue.Description))
+                {
+                    opValue.Description = opValue.Summary;
+                }
+
+                // Check for danger endpoints: any DELETE endpoint or POST /api/sweep/execute
+                var isDanger = method == Microsoft.OpenApi.Models.OperationType.Delete ||
+                               (method == Microsoft.OpenApi.Models.OperationType.Post && route.EndsWith("/execute", StringComparison.OrdinalIgnoreCase));
+
+                if (isDanger)
+                {
+                    if (!opValue.Summary.StartsWith("⚠️ DANGER:", StringComparison.OrdinalIgnoreCase) &&
+                        !opValue.Summary.StartsWith("🚨 DANGER:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        opValue.Summary = $"🚨 DANGER: {opValue.Summary}";
+                    }
+
+                    var dangerWarning = "\n\n> [!CAUTION]\n> **🚨 DANGER:** This is a destructive or critical operation. Exercise caution when invoking this endpoint.";
+                    if (!opValue.Description.Contains("DANGER:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        opValue.Description += dangerWarning;
+                    }
+                }
+            }
         }
         return Task.CompletedTask;
     });
@@ -178,7 +319,7 @@ app.MapScalarApiReference(options =>
 {
     options.Title = "Sweeprr API";
     options.Favicon = "/sweeprr_logo.png";
-    options.HeaderContent = "<img src='/sweeprr_logo.png' alt='Sweeprr' style='height:28px;margin-right:10px;vertical-align:middle;' />";
+    options.HeaderContent = "<div style='display:flex;align-items:center;'><img src='/sweeprr_logo.png' alt='Sweeprr' style='height:42px;margin-right:12px;' /><span style='font-size:22px;font-weight:700;color:#fff;font-family:system-ui, -apple-system, sans-serif;'>Sweeprr</span></div>";
     options.Theme = ScalarTheme.Purple;
     options.DarkMode = true;
     options.DefaultHttpClient = new(ScalarTarget.CSharp, ScalarClient.HttpClient);
@@ -186,6 +327,27 @@ app.MapScalarApiReference(options =>
     {
         PreferredSecuritySchemes = ["Bearer"],
     };
+    options.CustomCss = @"
+        /* Hide developer tools, configure, share, and deploy buttons from Scalar header */
+        .references-header-actions,
+        .references-header-actions button,
+        .scalar-client-header-actions,
+        .scalar-client-header-actions button,
+        .scalar-developer-tools,
+        .show-developer-tools,
+        .scalar-share-button,
+        .scalar-deploy-button,
+        .scalar-configure-button,
+        .references-header-right,
+        .references-header-right button,
+        [class*='header-actions'],
+        [class*='developer-tools'],
+        [class*='share-button'],
+        [class*='deploy-button'],
+        [class*='configure-button'] {
+            display: none !important;
+        }
+    ";
 }).AllowAnonymous();
 
 await app.Services.MigrateAndSeedAsync();
@@ -227,25 +389,19 @@ app.Use(async (context, next) =>
         var acceptHeader = context.Request.Headers.Accept.ToString();
         var isHtmlRequest = acceptHeader.Contains("text/html", StringComparison.OrdinalIgnoreCase);
 
-        // Public "Request Extension" portal (Story 10.4) — serve the SPA shell so React
-        // Router can render /extend without requiring a Sweeprr admin session.
-        if (isHtmlRequest && context.Request.Path.StartsWithSegments("/extend"))
+        // For unmatched HTML requests (e.g. client-side page refreshes on React routes),
+        // serve the SPA shell (index.html) so React Router can process it on the client,
+        // unless it is a backend API path.
+        if (isHtmlRequest && !context.Request.Path.StartsWithSegments("/api"))
         {
             context.Response.ContentType = "text/html";
             await context.Response.SendFileAsync(app.Environment.WebRootFileProvider.GetFileInfo("index.html"));
             return;
         }
 
-        if (isHtmlRequest)
-        {
-            context.Response.Redirect("/scalar/v1");
-        }
-        else
-        {
-            context.Response.StatusCode = StatusCodes.Status404NotFound;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsJsonAsync(new { error = "Not found", docsUrl = "/scalar/v1" });
-        }
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new { error = "Not found", docsUrl = "/scalar/v1" });
         return;
     }
     await next();
@@ -254,11 +410,9 @@ app.Use(async (context, next) =>
 app.UseAuthentication();
 app.UseAuthorization();
 
+// SPA fallback serves the index.html via the middleware catch-all above.
 // /api/* routes take precedence over the SPA fallback
 app.MapControllers();
-
-// Step 2 — Root redirect:
-app.MapGet("/", () => Results.Redirect("/scalar/v1", permanent: false)).AllowAnonymous();
 
 try
 {
