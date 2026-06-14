@@ -24,8 +24,10 @@ public enum SweepItemStatus { Pending, Approved, Ignored, Swept, Failed }
 
 public enum ActivityLogLevel { Debug, Information, Warning, Error }
 
-public enum ActivityLogCategory { Sweep, Connection, Rule, System, Auth }
+public enum ActivityLogCategory { Sweep, Connection, Rule, System, Auth, Backup }
 
 public enum NotificationProviderType { Discord, GenericWebhook }
 
 public enum NotificationTrigger { SweepComplete, FailsafeTripped, PendingItems, ConnectionError }
+
+public enum BackupDestinationType { Local, S3 }

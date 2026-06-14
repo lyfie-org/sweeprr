@@ -126,6 +126,12 @@ builder.Services.AddSingleton<INotificationProvider, DiscordNotificationProvider
 builder.Services.AddSingleton<INotificationProvider, GenericWebhookNotificationProvider>();
 builder.Services.AddHostedService<NotificationDispatchWorker>();
 
+// Automated backups (Story 11.3) — singleton scheduler so the controller can read
+// GetNextScheduledRun() / trigger a reload on the same instance.
+builder.Services.AddScoped<IBackupService, BackupService>();
+builder.Services.AddSingleton<BackupSchedulerHostedService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BackupSchedulerHostedService>());
+
 // Channel used to signal JellyfinCurationWarningSyncService when the sweep queue changes.
 // Bounded(1) + DropOldest: multiple rapid writes collapse to a single sync run.
 builder.Services.AddSingleton(Channel.CreateBounded<byte>(new BoundedChannelOptions(1)

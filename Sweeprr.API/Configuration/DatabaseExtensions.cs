@@ -57,6 +57,14 @@ public static class DatabaseExtensions
                 await db.SaveChangesAsync();
                 logger.LogInformation("GlobalSettings seeded with defaults.");
             }
+
+            // Seed BackupSettings if absent (single-row guarantee)
+            if (!await db.BackupSettings.AnyAsync())
+            {
+                db.BackupSettings.Add(new BackupSetting { Id = 1 });
+                await db.SaveChangesAsync();
+                logger.LogInformation("BackupSettings seeded with defaults.");
+            }
         }
         catch (Exception ex) when (ex.Message.Contains("permission") || ex.Message.Contains("read-only"))
         {

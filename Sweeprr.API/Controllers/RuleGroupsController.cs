@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sweeprr.API.Background;
@@ -473,6 +474,84 @@ public sealed class RuleGroupsController : ControllerBase
         });
     }
 
+    // ── Import / Export (Story 11.2) ────────────────────────────────────────
+
+    private const string ExportSchemaVersion = "1.1";
+
+    /// <summary>
+    /// Exports a rule group as a portable JSON file. Local IDs, schedule overrides,
+    /// and connection-specific quality profile references are stripped.
+    /// </summary>
+    [HttpGet("{id:int}/export")]
+    [ProducesResponseType(typeof(RuleGroupExportEnvelope), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Export(int id)
+    {
+        var group = await FindGroupAsync(id);
+        if (group is null) return NotFound();
+
+        var envelope = new RuleGroupExportEnvelope(
+            ExportSchemaVersion,
+            DateTimeOffset.UtcNow,
+            new ExportedRuleGroupDto(
+                group.Name,
+                group.Description,
+                group.MediaType,
+                group.Action,
+                group.Rules
+                    .OrderBy(r => r.Section)
+                    .ThenBy(r => r.Id)
+                    .Select(r => new RuleConditionDto
+                    {
+                        Section         = r.Section,
+                        LogicalOperator = r.LogicalOperator,
+                        Field           = r.Field,
+                        Comparator      = r.Comparator,
+                        Value           = r.Value,
+                        ValueType       = r.ValueType,
+                    })
+                    .ToList()));
+
+        Response.Headers.ContentDisposition = $"attachment; filename=\"rulegroup-{Slugify(group.Name)}.json\"";
+        return Ok(envelope);
+    }
+
+    /// <summary>
+    /// Imports a rule group from a previously-exported JSON file. The new group is
+    /// created disabled so an admin can review environment-specific values (genres,
+    /// tags, quality profile) before it starts scanning.
+    /// </summary>
+    [HttpPost("import")]
+    [ProducesResponseType(typeof(RuleGroupResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> Import([FromBody] RuleGroupExportEnvelope envelope)
+    {
+        if (envelope.SchemaVersion != ExportSchemaVersion)
+            return BadRequest(new { error = $"Unsupported schema version '{envelope.SchemaVersion}'. Expected '{ExportSchemaVersion}'." });
+
+        var validation = _validator.Validate(envelope.RuleGroup.MediaType, envelope.RuleGroup.Rules);
+        if (!validation.IsValid)
+            return UnprocessableEntity(new { errors = validation.Errors });
+
+        var group = new RuleGroup
+        {
+            Name        = envelope.RuleGroup.Name.Trim(),
+            Description = envelope.RuleGroup.Description?.Trim(),
+            MediaType   = envelope.RuleGroup.MediaType,
+            IsEnabled   = false,
+            Action      = envelope.RuleGroup.Action,
+            CreatedAt   = DateTime.UtcNow,
+            UpdatedAt   = DateTime.UtcNow,
+            Rules       = MapConditions(envelope.RuleGroup.Rules),
+        };
+
+        _db.RuleGroups.Add(group);
+        await _db.SaveChangesAsync();
+
+        return CreatedAtAction(nameof(GetById), new { id = group.Id }, ToResponse(group));
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private Task<RuleGroup?> FindGroupAsync(int id)
@@ -541,4 +620,10 @@ public sealed class RuleGroupsController : ControllerBase
         RuleField.FileSizeGb        => "File Size (GB)",
         _                           => field.ToString(),
     };
+
+    private static string Slugify(string name)
+    {
+        var slug = Regex.Replace(name.ToLowerInvariant(), "[^a-z0-9]+", "-").Trim('-');
+        return string.IsNullOrEmpty(slug) ? "rulegroup" : slug;
+    }
 }

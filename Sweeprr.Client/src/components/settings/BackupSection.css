@@ -1,0 +1,82 @@
+/* ── Backup & Restore section ───────────────────────────────────────────── */
+
+.backup__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.backup__hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--line-height-base);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.backup__field-label {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.backup__radio-group {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.backup__radio-group button {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.04));
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.backup__radio-group button.active {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.backup__radio-group button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.backup__next-run {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.backup__save-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.backup__history {
+  margin-top: var(--space-6);
+}
+
+.backup__history-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.backup__filename {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}

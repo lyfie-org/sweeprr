@@ -20,6 +20,12 @@
   flex-wrap: wrap;
 }
 
+.rules-page__header-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 .rules-page__title {
   margin: 0;
   font-size: var(--text-2xl);

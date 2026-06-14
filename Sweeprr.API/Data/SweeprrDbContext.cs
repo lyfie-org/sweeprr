@@ -17,6 +17,7 @@ public class SweeprrDbContext(DbContextOptions<SweeprrDbContext> options) : DbCo
     public DbSet<PlaybackActivity> PlaybackActivities => Set<PlaybackActivity>();
     public DbSet<SweeprrApiKey> SweeprrApiKeys => Set<SweeprrApiKey>();
     public DbSet<NotificationSetting> NotificationSettings => Set<NotificationSetting>();
+    public DbSet<BackupSetting> BackupSettings => Set<BackupSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,6 +27,12 @@ public class SweeprrDbContext(DbContextOptions<SweeprrDbContext> options) : DbCo
         modelBuilder.Entity<GlobalSettings>(e =>
         {
             e.ToTable(t => t.HasCheckConstraint("CK_GlobalSettings_SingleRow", "Id = 1"));
+        });
+
+        // Single-row guarantee for BackupSetting
+        modelBuilder.Entity<BackupSetting>(e =>
+        {
+            e.ToTable(t => t.HasCheckConstraint("CK_BackupSetting_SingleRow", "Id = 1"));
         });
 
         // RuleGroup → Rules cascade
