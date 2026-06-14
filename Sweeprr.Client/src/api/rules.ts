@@ -66,6 +66,20 @@ export interface RuleGroupRequest {
   conditions: RuleConditionDto[]
 }
 
+export interface ExportedRuleGroup {
+  name: string
+  description: string | null
+  mediaType: MediaType
+  action: SweepAction
+  rules: RuleConditionDto[]
+}
+
+export interface RuleGroupExportEnvelope {
+  schemaVersion: string
+  exportedAt: string
+  ruleGroup: ExportedRuleGroup
+}
+
 export interface QualityProfileDto {
   id: number
   name: string
@@ -156,6 +170,9 @@ export const rulesApi = {
     api.post<{ ruleGroupId: number; ruleGroupName: string; itemsFlagged: number; durationMs: number }>(
       `/api/rulegroups/${id}/scan`,
     ),
+
+  import: (envelope: RuleGroupExportEnvelope) =>
+    api.post<RuleGroupResponse>('/api/rulegroups/import', envelope),
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

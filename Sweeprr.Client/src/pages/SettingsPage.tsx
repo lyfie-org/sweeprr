@@ -10,6 +10,7 @@ import { settingsApi, type SettingsDto, type UpdateSettingsRequest } from '../ap
 import { systemApi } from '../api/system'
 import { ApiError } from '../api/client'
 import { ApiKeysSection } from '../components/settings/ApiKeysSection'
+import { BackupSection } from '../components/settings/BackupSection'
 import { ClientScriptSection } from '../components/settings/ClientScriptSection'
 import { NotificationsSection } from '../components/settings/NotificationsSection'
 import {
@@ -26,7 +27,7 @@ import './SettingsPage.css'
 
 // ── Cron description ──────────────────────────────────────────────────────────
 
-function describeCron(expr: string): { label: string; valid: boolean } | null {
+export function describeCron(expr: string): { label: string; valid: boolean } | null {
   const parts = expr.trim().split(/\s+/)
   if (parts.length !== 5) return null
   const [min, hour, dom, month, dow] = parts
@@ -125,11 +126,15 @@ export function SettingsPage() {
   const [cronError, setCronError] = useState<string | null>(null)
   const [theme, setTheme] = useState<'light' | 'dark'>(getStoredTheme)
   const [version, setVersion] = useState<string>('')
+  const [releaseDate, setReleaseDate] = useState<string>('')
   const [showDirectDeleteConfirm, setShowDirectDeleteConfirm] = useState(false)
 
   useEffect(() => {
     systemApi.getInfo()
-      .then(data => setVersion(data.version))
+      .then(data => {
+        setVersion(data.version)
+        setReleaseDate(data.releaseDate)
+      })
       .catch(() => {})
   }, [])
 
@@ -558,6 +563,9 @@ export function SettingsPage() {
         {/* ── API Keys ── */}
         <ApiKeysSection />
 
+        {/* ── Backup & Restore ── */}
+        <BackupSection />
+
         {/* ── Jellyfin Integration ── */}
         <Card>
           <CardBody>
@@ -657,6 +665,14 @@ export function SettingsPage() {
               <div className="settings-about__row">
                 <span className="settings-about__title">Sweeprr</span>
                 {version && <span className="settings-about__version">v{version}</span>}
+                {releaseDate && (
+                  <span className="settings-about__divider">•</span>
+                )}
+                {releaseDate && (
+                  <span className="settings-about__version">
+                    Released {new Date(releaseDate).toLocaleDateString()}
+                  </span>
+                )}
               </div>
               <p className="settings-about__description">
                 Self-hosted media library management app. Integrates Jellyfin with Radarr/Sonarr to automatically sweep watched media.

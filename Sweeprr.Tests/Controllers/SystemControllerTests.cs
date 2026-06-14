@@ -23,6 +23,11 @@ public class SystemControllerTests
         var versionProp = val.GetType().GetProperty("version");
         Assert.NotNull(versionProp);
         var versionValue = versionProp.GetValue(val) as string;
-        Assert.Equal("1.0.0", versionValue);
+        Assert.Equal("1.1.0", versionValue);
+
+        var releaseDateProp = val.GetType().GetProperty("releaseDate");
+        Assert.NotNull(releaseDateProp);
+        var releaseDateValue = releaseDateProp.GetValue(val) as string;
+        Assert.NotNull(releaseDateValue);
     }
 }

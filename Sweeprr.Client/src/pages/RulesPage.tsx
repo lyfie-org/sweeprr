@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Plus,
   ListChecks,
@@ -9,12 +9,15 @@ import {
   Television,
   VideoCamera,
   ClockClockwise,
+  DownloadSimple,
+  UploadSimple,
 } from '@phosphor-icons/react'
 import {
   rulesApi,
   ACTION_LABELS,
   MEDIA_TYPE_LABELS,
   type MediaType,
+  type RuleGroupExportEnvelope,
   type RuleGroupResponse,
   type SweepAction,
 } from '../api/rules'
@@ -78,6 +81,42 @@ function RuleGroupCard({ group, onEdit, onRefresh }: RuleGroupCardProps) {
   const [toggling, setToggling] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const token = localStorage.getItem('sweeprr_token')
+      const res = await fetch(`/api/rulegroups/${group.id}/export`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+      if (!res.ok) throw new Error('Export failed')
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+
+      const disposition = res.headers.get('content-disposition')
+      let filename = `rulegroup-${group.id}.json`
+      if (disposition) {
+        const match = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition)
+        if (match?.[1]) filename = match[1].replace(/['"]/g, '')
+      }
+
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      toast({ type: 'error', title: 'Export failed', message: 'Could not export rule group.' })
+    } finally {
+      setExporting(false)
+    }
+  }
 
   async function handleScan() {
     setScanning(true)
@@ -217,6 +256,16 @@ function RuleGroupCard({ group, onEdit, onRefresh }: RuleGroupCardProps) {
             Edit
           </Button>
           <Button
+            variant="ghost"
+            size="sm"
+            iconLeft={<DownloadSimple size={13} weight="duotone" />}
+            onClick={handleExport}
+            loading={exporting}
+            disabled={scanning || deleting}
+          >
+            Export
+          </Button>
+          <Button
             variant={confirmDelete ? 'danger' : 'ghost'}
             size="sm"
             iconLeft={!confirmDelete ? <Trash size={13} weight="duotone" /> : undefined}
@@ -240,6 +289,8 @@ export function RulesPage() {
   const [loading, setLoading] = useState(true)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingGroup, setEditingGroup] = useState<RuleGroupResponse | null>(null)
+  const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -276,6 +327,35 @@ export function RulesPage() {
     setEditorOpen(false)
   }
 
+  function openImport() {
+    fileInputRef.current?.click()
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setImporting(true)
+    try {
+      const text = await file.text()
+      const envelope = JSON.parse(text) as RuleGroupExportEnvelope
+      const imported = await rulesApi.import(envelope)
+      toast({ type: 'success', title: 'Rule group imported successfully' })
+      await fetchGroups()
+      openEdit(imported)
+    } catch (err) {
+      const msg = err instanceof ApiError
+        ? err.message
+        : err instanceof SyntaxError
+          ? 'Invalid JSON file.'
+          : 'Import failed'
+      toast({ type: 'error', title: 'Import failed', message: msg })
+    } finally {
+      setImporting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="rules-page__loading">
@@ -293,14 +373,32 @@ export function RulesPage() {
             Define retention policies — items matching all conditions will be swept.
           </p>
         </div>
-        <Button
-          variant="primary"
-          size="sm"
-          iconLeft={<Plus size={16} weight="bold" />}
-          onClick={openCreate}
-        >
-          New Rule Group
-        </Button>
+        <div className="rules-page__header-actions">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            onChange={handleImportFile}
+            style={{ display: 'none' }}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            iconLeft={<UploadSimple size={16} weight="bold" />}
+            onClick={openImport}
+            loading={importing}
+          >
+            Import Rule Group
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            iconLeft={<Plus size={16} weight="bold" />}
+            onClick={openCreate}
+          >
+            New Rule Group
+          </Button>
+        </div>
       </div>
 
       {groups.length === 0 ? (

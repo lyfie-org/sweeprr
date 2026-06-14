@@ -81,11 +81,18 @@ Sweeprr organizes cleanup policies into **Rule Groups**:
 
 ## 📚 Deep-Dive Documentation
 
+- [What's New in v1.1](docs/v1.1-what-is-new.md)
 - [Rule Builder Reference](docs/rules.md)
 - [Realtime WebSocket Architecture](docs/realtime.md)
 - [Multi-User Safety Model](docs/multi-user.md)
 - [Radarr & Sonarr API Sync](docs/arr-sync.md)
 - [Backup & Restore Procedures](docs/backup-restore.md)
+- [Automated Backups (Local & S3/MinIO)](docs/s3-backup.md)
+- [Bazarr Subtitle Integration](docs/bazarr-integration.md)
+- [API Keys](docs/api-keys.md)
+- [Jellyfin In-UI "Leaving Soon" Banner](docs/jellyfin-script-injection.md)
+- ["Request Extension" Public Portal](docs/extension-portal.md)
+- [Changelog](CHANGELOG.md)
 
 ---
 
